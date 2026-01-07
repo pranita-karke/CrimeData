@@ -1,0 +1,37 @@
+--- DEBUGGING GANDAKI DATA ---
+Districts in Gandaki: ['Baglung', 'Gorkha', 'Kaski', 'Lamjung', 'Manang', 'Mustang', 'Myagdi', 'Nawalparasi East', 'Parbat', 'Syangja', 'Tanahun']
+
+District             | Total Cases (All Years)  
+--------------------------------------------------
+Baglung              | 167                      
+Gorkha               | 1233                     
+Kaski                | 2028                     
+Lamjung              | 1297                     
+Manang               | 13                       
+Mustang              | 7                        
+Myagdi               | 152                      
+Nawalparasi East     | 109                      
+Parbat               | 148                      
+Syangja              | 834                      
+Tanahun              | 1214                     
+
+--- DETAILED CHECK (Sample Year 2076/77) ---
+District             | Crime Type                     | Cases
+Baglung              | Abduction and Rape             | 0
+Baglung              | Abuse against senior citizen   | 0
+Baglung              | Acid Attack                    | 0
+Baglung              | Attempt to Rape                | 3
+Baglung              | Caste-based Discrimination and Untouchability | 0
+------------------------------------------------------------
+Gorkha               | Abduction and Rape             | 0
+Gorkha               | Abuse against senior citizen   | 0
+Gorkha               | Acid Attack                    | 0
+Gorkha               | Attempt to Rape                | 6
+Gorkha               | Caste-based Discrimination and Untouchability | 1
+------------------------------------------------------------
+Kaski                | Abduction and Rape             | 0
+Kaski                | Abuse against senior citizen   | 0
+Kaski                | Acid Attack                    | 0
+Kaski                | Attempt to Rape                | 15
+Kaski                | Caste-based Discrimination and Untouchability | 0
+------------------------------------------------------------

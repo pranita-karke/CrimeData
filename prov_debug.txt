@@ -1,0 +1,2 @@
+Bhaktapur Prov: ["'Bagmati (Excluding Valley)'", "'Valley'"]
+All Provs: ["'Koshi'", "'Madhesh'", "'Bagmati (Excluding Valley)'", "'Gandaki'", "'Lumbini'", "'Karnali'", "'Sudurpashchim'", "'Valley'"]

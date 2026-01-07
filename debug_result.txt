@@ -1,0 +1,6 @@
+Checking Province: Koshi
+Districts found: ['Bhojpur', 'Dhankuta', 'Ilam', 'Jhapa', 'Khotang']...
+Comparing District 'Bhojpur' vs 'Dhankuta' for Year '2076/77'
+Bhojpur Total: 104
+Dhankuta Total: 104
+WARNING: Data seems identical between districts!
