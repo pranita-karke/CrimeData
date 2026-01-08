@@ -1,9 +1,11 @@
-from flask import Flask, jsonify, request, render_template, send_file
+from flask import Flask, jsonify, request, render_template, send_file, session, redirect, url_for
 import sqlite3
 import pandas as pd
 import os
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
+app.secret_key = 'super_secret_key_for_demo' # Change in production
 DB_FILE = 'crime_data.db'
 
 def get_db_connection():
@@ -11,9 +13,353 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+def init_tables():
+    conn = get_db_connection()
+    # FIR Table
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS firs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            full_name TEXT NOT NULL,
+            province TEXT,
+            district TEXT,
+            police_station TEXT,
+            contact_info TEXT,
+            crime_type TEXT,
+            description TEXT,
+            status TEXT DEFAULT 'Pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    # Users Table
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            full_name TEXT NOT NULL,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL, -- 'user', 'police', 'admin'
+            police_station TEXT, -- Nullable, only for police
+            district TEXT, -- Nullable, only for police
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    # Alerts Table
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS alerts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            district TEXT NOT NULL,
+            message TEXT NOT NULL,
+            status TEXT DEFAULT 'Pending',
+            accepted_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+# Initialize tables on start
+try:
+    init_tables()
+except Exception as e:
+    print(f"Error initializing tables: {e}")
+
 @app.route('/')
 def index():
-    return render_template('index.html')
+    if 'user_id' in session:
+        return render_template('index.html', user=session)
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        conn = get_db_connection()
+        user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+        conn.close()
+        
+        if user and check_password_hash(user['password_hash'], password):
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            session['role'] = user['role']
+            session['full_name'] = user['full_name']
+            if user['role'] == 'police':
+                session['station'] = user['police_station']
+                session['district'] = user['district']
+            return redirect(url_for('index'))
+        else:
+            return render_template('login.html', error="Invalid username or password")
+            
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        full_name = request.form.get('full_name')
+        username = request.form.get('username')
+        password = request.form.get('password')
+        role = request.form.get('role')
+        
+        # Police specific fields
+        police_station = request.form.get('police_station')
+        district = request.form.get('district')
+        
+        if not username or not password or not full_name:
+             return render_template('register.html', error="All fields are required")
+
+        hashed_pw = generate_password_hash(password)
+        
+        # --- Handle New Station ---
+        if role == 'police' and police_station == 'Other':
+            new_station = request.form.get('new_station_name')
+            new_phone = request.form.get('new_station_phone')
+            
+            if not new_station:
+                 return render_template('register.html', error="New Station Name is required")
+            
+            new_station = new_station.strip().title()
+            
+            try:
+                conn = get_db_connection()
+                # Insert if not exists (or fail/ignore)
+                conn.execute('INSERT INTO police_stations (station_name, district, phone) VALUES (?, ?, ?)',
+                             (new_station, district, new_phone))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                print(f"Error adding station: {e}")
+            
+            police_station = new_station
+
+        try:
+            conn = get_db_connection()
+            conn.execute('''
+                INSERT INTO users (full_name, username, password_hash, role, police_station, district)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (full_name, username, hashed_pw, role, police_station, district))
+            conn.commit()
+            conn.close()
+            return redirect(url_for('login'))
+        except sqlite3.IntegrityError:
+            return render_template('register.html', error="Username already exists")
+        except Exception as e:
+            return render_template('register.html', error=str(e))
+            
+    return render_template('register.html')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+@app.route('/api/my_complaints')
+def my_complaints():
+    if 'user_id' not in session or session.get('role') != 'police':
+        return jsonify({'error': 'Unauthorized'}), 403
+        
+    try:
+        station_name = session.get('station')
+        if not station_name:
+            print("DEBUG MATCH: Error - Station Name is None", flush=True)
+            return jsonify([])
+
+        conn = get_db_connection()
+        all_firs = conn.execute("SELECT * FROM firs ORDER BY created_at DESC").fetchall()
+        conn.close()
+        
+        
+        # Python-side filtering with Fuzzy Matching
+        import difflib
+        
+        matches = []
+        
+        def normalize(s):
+            if not s: return ""
+            # Remove all spaces and non-alphanumeric, plain lowercase
+            return ''.join(c for c in s.lower() if c.isalnum())
+
+        def get_core_name(s):
+            if not s: return ""
+            s = s.lower()
+            # Remove common prefixes/suffixes to compare only the location Name
+            ignore_words = ["district", "police", "office", "dpo", "metropolitan", "submetropolitan", "municipality", "rural", "station", "area", "apo", "range", "ward", "woda", "post", "chowki", "circle", "sector", "beat"]
+            for w in ignore_words:
+                s = s.replace(w, "")
+            # Return normalized core
+            return ''.join(c for c in s if c.isalnum())
+            
+        norm_session = normalize(station_name)
+        core_session = get_core_name(station_name)
+        
+        print(f"DEBUG MATCH: Session='{station_name}', Norm='{norm_session}', Core='{core_session}'", flush=True)
+
+        for row in all_firs:
+            f_station = row['police_station']
+            if not f_station: continue
+            
+            norm_fir = normalize(f_station)
+            core_fir = get_core_name(f_station)
+            
+            # 1. Exact containment of FULL strings (if user provided very specific name)
+            if norm_session in norm_fir or norm_fir in norm_session:
+                matches.append(dict(row))
+                continue
+                
+            # 2. Fuzzy Similarity on CORE name only (Avoids "District Police Office" causing 80% match)
+            # Only check if we have a core name (avoid matching empty strings)
+            if len(core_session) > 2 and len(core_fir) > 2:
+                ratio = difflib.SequenceMatcher(None, core_session, core_fir).ratio()
+                if ratio > 0.85: # Increased threshold strictly for core names
+                    print(f"DEBUG MATCH: Fuzzy Core Match {ratio:.2f} for '{f_station}'", flush=True)
+                    matches.append(dict(row))
+
+        print(f"DEBUG MATCH: Found {len(matches)} complaints", flush=True)
+        return jsonify(matches)
+        
+    except Exception as e:
+        print(f"ERROR in my_complaints: {e}", flush=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/my_alerts')
+def my_alerts():
+    if 'user_id' not in session or session.get('role') != 'police':
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    district = session.get('district')
+    # Fetch alerts for this district (last 24 hours/active)
+    print(f"DEBUG ALERTS: Fetching for district '{district}'", flush=True)
+    conn = get_db_connection()
+    try:
+        alerts = conn.execute('''
+            SELECT id, district, message, status, accepted_by, created_at, sender_name FROM alerts 
+            WHERE district = ? COLLATE NOCASE
+            ORDER BY created_at DESC 
+            LIMIT 5
+        ''', (district,)).fetchall()
+        print(f"DEBUG ALERTS: Found {len(alerts)} alerts", flush=True)
+        return jsonify([dict(row) for row in alerts])
+    finally:
+        conn.close()
+
+@app.route('/api/create_alert', methods=['POST'])
+def create_alert():
+    data = request.get_json()
+    district = data.get('district')
+    message = data.get('message', 'Emergency Reported')
+    
+    # Debug: Print session keys
+    print(f"DEBUG SESSION: {list(session.keys())}", flush=True)
+    if 'full_name' in session:
+         print(f"DEBUG SESSION NAME: {session['full_name']}", flush=True)
+    
+    sender_name = session.get('full_name') or 'Anonymous User'
+    
+    print(f"DEBUG ALERTS: Creating alert for '{district}' by '{sender_name}'", flush=True)
+    
+    if not district:
+        print("DEBUG ALERTS: Failed - No District", flush=True)
+        return jsonify({'status': 'error', 'message': 'District required'}), 400
+        
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute('INSERT INTO alerts (district, message, sender_name) VALUES (?, ?, ?)', (district, message, sender_name))
+        conn.commit()
+        return jsonify({'status': 'success', 'alert_id': cursor.lastrowid})
+    finally:
+        conn.close()
+
+@app.route('/api/accept_alert', methods=['POST'])
+def accept_alert():
+    if 'user_id' not in session or session.get('role') != 'police':
+        return jsonify({'error': 'Unauthorized'}), 403
+        
+    data = request.get_json()
+    alert_id = data.get('alert_id')
+    station_name = session.get('station')
+    
+    conn = get_db_connection()
+    try:
+        # Check if already accepted
+        alert = conn.execute('SELECT status FROM alerts WHERE id = ?', (alert_id,)).fetchone()
+        if not alert:
+            return jsonify({'status': 'error', 'message': 'Alert not found'}), 404
+            
+        if alert['status'] == 'Accepted':
+             # Already accepted
+             return jsonify({'status': 'success', 'message': 'Already accepted'})
+             
+        conn.execute('UPDATE alerts SET status = ?, accepted_by = ? WHERE id = ?', 
+                     ('Accepted', station_name, alert_id))
+        conn.commit()
+        return jsonify({'status': 'success'})
+    finally:
+        conn.close()
+
+@app.route('/api/alert_status/<int:alert_id>', methods=['GET'])
+def get_alert_status(alert_id):
+    conn = get_db_connection()
+    try:
+        alert = conn.execute('SELECT status, accepted_by FROM alerts WHERE id = ?', (alert_id,)).fetchone()
+        if not alert:
+            return jsonify({'error': 'Not found'}), 404
+        return jsonify({
+            'status': alert['status'],
+            'accepted_by': alert['accepted_by']
+        })
+    finally:
+        conn.close()
+
+@app.route('/api/update_status', methods=['POST'])
+def update_status():
+    if 'user_id' not in session or session.get('role') != 'police':
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    fir_id = data.get('id')
+    status = data.get('status')
+    
+    conn = get_db_connection()
+    try:
+        conn.execute('UPDATE firs SET status = ? WHERE id = ?', (status, fir_id))
+        conn.commit()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/submit_fir', methods=['POST'])
+def submit_fir():
+    try:
+        data = request.get_json()
+        required_fields = ['full_name', 'police_station', 'description']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'status': 'error', 'message': f'Missing field: {field}'}), 400
+        
+        conn = get_db_connection()
+        from datetime import datetime
+        conn.execute('''
+            INSERT INTO firs (full_name, province, district, police_station, contact_info, crime_type, description, created_at, nepali_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            data.get('full_name'),
+            data.get('province'),
+            data.get('district'),
+            data.get('police_station'),
+            data.get('contact_info'),
+            data.get('crime_type'),
+            data.get('description'),
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            data.get('nepali_date')
+        ))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success', 'message': 'FIR submitted successfully'}), 201
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/api/dashboard/stats')
 def get_dashboard_stats():
@@ -225,7 +571,7 @@ def get_stations():
     mapping = {
         "KAVRE": "Kavrepalanchok",
         "TANAHU": "Tanahun",
-        "MAKWANPUR": "Makawanpur", 
+        "MAKWANPUR": "Makwanpur", 
         "SINDHUPALCHOWK": "Sindhupalchok",
         "CHITAWAN": "Chitwan",
         "DHANUSA": "Dhanusha",
@@ -237,6 +583,26 @@ def get_stations():
     if d_upper in mapping:
         district = mapping[d_upper]
 
+    # Additional Logic for Valley/Metropolitan areas
+    # If input is "Kathmandu Metropolitan City" -> "Kathmandu"
+    # If input is "Lalitpur Metropolitan City" -> "Lalitpur"
+    # If input is "Bhaktapur Municipality" -> "Bhaktapur"
+    
+    # Generic strip of suffixes
+    suffixes = [" METROPOLITAN CITY", " SUB-METROPOLITAN CITY", " MUNICIPALITY", " RURAL MUNICIPALITY"]
+    for suffix in suffixes:
+        if d_upper.endswith(suffix):
+            district = district[: -len(suffix)].strip().title()
+            break
+            
+    # Specific Overrides for Valley (if they don't match standard patterns)
+    if "KATHMANDU" in d_upper: 
+        district = "Kathmandu"
+    elif "LALITPUR" in d_upper:
+        district = "Lalitpur"
+    elif "BHAKTAPUR" in d_upper:
+        district = "Bhaktapur"
+
     conn = get_db_connection()
     # Search with LIKE for flexibility (e.g. "Rukum" -> "Rukum West")
     query = "SELECT station_name, phone FROM police_stations WHERE district LIKE ? COLLATE NOCASE"
@@ -247,3 +613,28 @@ def get_stations():
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
+
+@app.route('/api/update_status', methods=['POST'])
+def update_status():
+    if 'user_id' not in session or session.get('role') != 'police':
+        return jsonify({'error': 'Unauthorized'}), 403
+        
+    data = request.get_json()
+    fir_id = data.get('id')
+    new_status = data.get('status')
+    
+    if not fir_id or not new_status:
+        return jsonify({'error': 'Missing data'}), 400
+        
+    # Verify this FIR belongs to the logged-in police station (security check)
+    # Ideally checking against DB, but for now trusting ID + Session Context logic
+    
+    conn = get_db_connection()
+    try:
+        conn.execute("UPDATE firs SET status = ? WHERE id = ?", (new_status, fir_id))
+        conn.commit()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()

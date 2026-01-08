@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - Nepal GBV Analytics</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body {
+            background-color: var(--background-gray);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .auth-card {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 1rem;
+            width: 100%;
+            max-width: 500px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .auth-title {
+            text-align: center;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            color: var(--primary-color);
+        }
+
+        .auth-link {
+            text-align: center;
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .auth-link a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .error-msg {
+            background: #ffe4e6;
+            color: #be123c;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="auth-card">
+        <div class="auth-title">
+            <i class="fas fa-user-plus"></i> Register
+        </div>
+
+        {% if error %}
+        <div class="error-msg">{{ error }}</div>
+        {% endif %}
+
+        <form action="/register" method="POST">
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" name="full_name" class="form-control" required placeholder="John Doe">
+            </div>
+
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" class="form-control" required placeholder="johndoe123">
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" class="form-control" required placeholder="********">
+            </div>
+
+            <div class="form-group">
+                <label>Role</label>
+                <select name="role" id="role" class="form-control" required onchange="togglePoliceFields()">
+                    <option value="user">General User</option>
+                    <option value="police">Police Officer</option>
+                </select>
+            </div>
+
+            <div id="policeFields"
+                style="display: none; background: #f8fafc; padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--border-color); margin-bottom: 1rem;">
+                <div class="form-group">
+                    <label>District</label>
+                    <select name="district" id="regDistrict" class="form-control" onchange="loadStations()">
+                        <option value="">Select District</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Police Station</label>
+                    <select name="police_station" id="regStation" class="form-control"
+                        onchange="toggleNewStationFields()">
+                        <option value="">Select Station</option>
+                    </select>
+                </div>
+
+                <!-- New Station Fields -->
+                <div id="newStationFields"
+                    style="display:none; border-top:1px solid #e2e8f0; padding-top:1rem; margin-top:1rem;">
+                    <p style="font-size:0.85rem; color:var(--primary-color); margin-bottom:1rem; font-weight:600;">
+                        <i class="fas fa-plus-circle"></i> Add New Station Details
+                    </p>
+                    <div class="form-group">
+                        <label>Station Name</label>
+                        <input type="text" name="new_station_name" id="newStationName" class="form-control"
+                            placeholder="e.g. Area Police Office, Thamel">
+                    </div>
+                    <div class="form-group">
+                        <label>Phone Number</label>
+                        <input type="text" name="new_station_phone" id="newStationPhone" class="form-control"
+                            placeholder="e.g. 98512...">
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-primary" style="margin-top: 1rem;">Create Account</button>
+        </form>
+
+        <div class="auth-link">
+            Already have an account? <a href="/login">Login</a>
+        </div>
+    </div>
+
+    <script>
+        async function init() {
+            // Load Districts
+            const res = await fetch('/api/districts');
+            const districts = await res.json();
+            const districtSel = document.getElementById('regDistrict');
+            districts.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d;
+                opt.textContent = d;
+                districtSel.appendChild(opt);
+            });
+        }
+
+        function togglePoliceFields() {
+            const role = document.getElementById('role').value;
+            const fields = document.getElementById('policeFields');
+            const dist = document.getElementById('regDistrict');
+            const station = document.getElementById('regStation');
+
+            if (role === 'police') {
+                fields.style.display = 'block';
+                dist.required = true;
+                station.required = true;
+            } else {
+                fields.style.display = 'none';
+                dist.required = false;
+                station.required = false;
+            }
+        }
+
+        async function loadStations() {
+            const district = document.getElementById('regDistrict').value;
+            const stationSel = document.getElementById('regStation');
+            stationSel.innerHTML = '<option value="">Select Station</option>';
+
+            if (district) {
+                const res = await fetch(`/api/stations?district=${encodeURIComponent(district)}`);
+                const stations = await res.json();
+                stations.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.name;
+                    opt.textContent = s.name;
+                    stationSel.appendChild(opt);
+                });
+
+                // Add 'Other' Option
+                const otherOpt = document.createElement('option');
+                otherOpt.value = "Other";
+                otherOpt.textContent = "Other (Add New)";
+                otherOpt.style.fontWeight = "bold";
+                otherOpt.style.color = "#2563eb";
+                stationSel.appendChild(otherOpt);
+            }
+        }
+
+        function toggleNewStationFields() {
+            const val = document.getElementById('regStation').value;
+            const newFields = document.getElementById('newStationFields');
+            const newName = document.getElementById('newStationName');
+            const newPhone = document.getElementById('newStationPhone');
+
+            if (val === 'Other') {
+                newFields.style.display = 'block';
+                newName.required = true;
+                newPhone.required = true;
+            } else {
+                newFields.style.display = 'none';
+                newName.required = false;
+                newPhone.required = false;
+                newName.value = "";
+                newPhone.value = "";
+            }
+        }
+
+        init();
+    </script>
+
+</body>
+
+</html>

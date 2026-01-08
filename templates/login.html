@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Nepal GBV Analytics</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body {
+            background-color: var(--background-gray);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .auth-card {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 1rem;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .auth-title {
+            text-align: center;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            color: var(--primary-color);
+        }
+
+        .auth-link {
+            text-align: center;
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .auth-link a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .error-msg {
+            background: #ffe4e6;
+            color: #be123c;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="auth-card">
+        <div class="auth-title">
+            <i class="fas fa-shield-alt"></i> Login
+        </div>
+
+        {% if error %}
+        <div class="error-msg">{{ error }}</div>
+        {% endif %}
+
+        <form action="/login" method="POST">
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" class="form-control" required placeholder="Enter username">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" class="form-control" required placeholder="Enter password">
+            </div>
+            <button type="submit" class="btn-primary" style="margin-top: 1rem;">Sign In</button>
+        </form>
+
+        <div class="auth-link">
+            Don't have an account? <a href="/register">Register</a>
+        </div>
+    </div>
+
+</body>
+
+</html>

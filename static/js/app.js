@@ -18,7 +18,10 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         charts: {},
-        currentChartType: 'pie'
+        currentChartType: 'pie',
+        // Police Dashboard State
+        myComplaints: [],
+        myAlerts: []
     };
 
     const elements = {
@@ -320,7 +323,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                                 // Fetch Police Stations
                                 const stationsBody = document.getElementById('policeStationsBody');
+                                const alertBtn = document.getElementById('emergencyAlertBtn');
+
                                 stationsBody.innerHTML = '<tr><td colspan="2" style="padding:1rem; text-align:center; color:#94a3b8;">Loading directories...</td></tr>';
+                                alertBtn.style.display = 'none';
 
                                 try {
                                     const resPol = await fetch(`/api/stations?district=${encodeURIComponent(districtName)}`);
@@ -328,18 +334,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
                                     stationsBody.innerHTML = '';
                                     if (stations && stations.length > 0) {
+                                        alertBtn.style.display = 'block'; // Show Alert Button
                                         stations.forEach(s => {
+                                            // Handle potential quotes in names
+                                            const safeStation = s.name.replace(/'/g, "\\'");
+                                            const safeDistrict = districtName.replace(/'/g, "\\'");
+
                                             stationsBody.innerHTML += `
                                                 <tr style="border-bottom:1px solid #f1f5f9;">
                                                     <td style="padding:0.75rem; font-weight:500;">${s.name}</td>
                                                     <td style="padding:0.75rem; color:var(--primary-color);">
                                                         <i class="fas fa-phone-alt"></i> ${s.phone}
                                                     </td>
+                                                    <td style="padding:0.75rem; text-align:right;">
+                                                        <button onclick="window.openFIRModal('${safeStation}', '${safeDistrict}')" 
+                                                            style="padding:0.4rem 0.8rem; background:var(--danger-color); color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.85rem; font-weight:600;">
+                                                            <i class="fas fa-file-contract"></i> FIR
+                                                        </button>
+                                                    </td>
                                                 </tr>
                                             `;
                                         });
                                     } else {
-                                        stationsBody.innerHTML = '<tr><td colspan="2" style="padding:1rem; text-align:center; color:#94a3b8;">No contact information available for this district.</td></tr>';
+                                        stationsBody.innerHTML = '<tr><td colspan="3" style="padding:1rem; text-align:center; color:#94a3b8;">No contact information available for this district.</td></tr>';
                                     }
                                 } catch (e) {
                                     console.error("Stations fetch failed:", e);
@@ -498,6 +515,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Only fetch global main data for "Combined" view stats
             const mainRes = await fetch('/api/crime/main');
             state.globalMainData = await mainRes.json();
+            state.mainData = state.globalMainData; // Fix: Initialize main view data
 
             // Allow stats to be fetched globally too
             const statsRes = await fetch('/api/dashboard/stats');
@@ -535,7 +553,14 @@ document.addEventListener('DOMContentLoaded', () => {
             filtered = filtered.filter(d => d.Year == state.filters.demo.year);
         }
         if (state.filters.demo.province) {
-            filtered = filtered.filter(d => d.Province && d.Province.includes(state.filters.demo.province));
+            filtered = filtered.filter(d => {
+                let p = d.Province || "";
+                // Mapping Bagmati
+                if (state.filters.demo.province.includes("Bagmati")) {
+                    return p.includes("Bagmati");
+                }
+                return p.includes(state.filters.demo.province);
+            });
         }
         renderDemographicsView(filtered);
     }
@@ -547,8 +572,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (state.filters.police.province) {
             filtered = filtered.filter(d => {
-                const reg = d.Region || d.Province;
-                return reg && reg.includes(state.filters.police.province);
+                const reg = d.Region || d.Province || "";
+                // Mapping Bagmati
+                if (state.filters.police.province.includes("Bagmati")) {
+                    return reg.includes("Bagmati");
+                }
+                return reg.includes(state.filters.police.province);
             });
         }
         renderPoliceView(filtered);
@@ -1056,6 +1085,520 @@ document.addEventListener('DOMContentLoaded', () => {
         const values = data.detailed_predictions.slice(0, 10).map(d => d.predicted_cases);
         createChart('predictionChart', 'bar', labels, values, 'Predicted Cases', null);
     }
+
+    // Global Tab Switcher
+    window.switchTab = async (tabName) => {
+        // Update Nav
+        document.querySelectorAll('.nav-item').forEach(btn => {
+            if (btn.textContent.toLowerCase().includes(tabName)) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+
+        // Hide all panes
+        const panes = ['home', 'prediction', 'alert', 'notifications', 'complaints'];
+        panes.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+
+        // Show target
+        const target = document.getElementById(tabName);
+        if (target) {
+            target.style.display = 'block';
+            target.classList.add('active');
+        }
+
+        // Logic for specific tabs
+        if (tabName === 'home') {
+            // Default view
+        } else if (tabName === 'alert') {
+            if (!window.mapInitialized) {
+                initMap();
+                window.mapInitialized = true;
+            }
+            setTimeout(() => { if (window.nepalMap) window.nepalMap.invalidateSize(); }, 200);
+        } else if (tabName === 'notifications') {
+            fetchPoliceNotifications();
+        } else if (tabName === 'complaints') {
+            fetchPoliceComplaints();
+        }
+    };
+
+    async function fetchPoliceNotifications() {
+        const container = document.getElementById('notificationList');
+        container.innerHTML = '<div style="padding:1rem;">Loading...</div>';
+        try {
+            const res = await fetch('/api/my_alerts');
+            const alerts = await res.json();
+            if (alerts.length > 0) {
+                container.innerHTML = alerts.map(a => `
+                    <div style="background:#fee2e2; border-left:4px solid var(--danger-color); padding:1rem; border-radius:4px;">
+                        <div style="font-weight:bold; color:#be123c;">${a.type}</div>
+                        <div>${a.message}</div>
+                        <div style="font-size:0.8rem; color:#881337; margin-top:0.2rem;">${a.time}</div>
+                    </div>
+                `).join('');
+            } else {
+                container.innerHTML = '<div style="padding:1rem; color:#64748b;">No new alerts.</div>';
+            }
+        } catch (e) { console.error(e); }
+    }
+
+    async function startAlertPolling() {
+        const fetchAlerts = async () => {
+            try {
+                // Add timestamp to prevent browser caching
+                const res = await fetch('/api/my_alerts?_=' + Date.now());
+                if (!res.ok) return; // Maybe not logged in or authorized
+                const alerts = await res.json();
+                renderAlerts(alerts);
+            } catch (e) {
+                console.error("Alert polling error", e);
+            }
+        };
+
+        // Initial fetch
+        fetchAlerts();
+        // Poll every 3 seconds
+        setInterval(fetchAlerts, 3000);
+    }
+
+    function renderAlerts(alerts) {
+        // Ensure Modal is hidden on load context
+        const modal = document.getElementById('firModal');
+        if (modal && !window.modalSafetyChecked) {
+            modal.style.display = 'none';
+            window.modalSafetyChecked = true;
+        }
+
+        // Target BOTH the Dashboard container AND the Notification Tab container
+        const containers = [
+            document.getElementById('alertsContainer'),
+            document.getElementById('notificationList')
+        ];
+
+        containers.forEach(container => {
+            if (!container) return;
+
+            if (!alerts || alerts.length === 0) {
+                container.innerHTML = '<div style="padding:1rem; color:#64748b; font-style:italic;">No active emergency alerts.</div>';
+                return;
+            }
+
+            container.innerHTML = alerts.map(alert => {
+                const isAccepted = alert.status === 'Accepted';
+                const acceptedBy = alert.accepted_by || 'Unknown';
+                const acceptedText = isAccepted ? `Accepted by ${acceptedBy}` : 'Pending Response';
+                const statusColor = isAccepted ? '#10b981' : '#ef4444'; // Green or Red
+                const bg = isAccepted ? '#ecfdf5' : '#fef2f2';
+
+                const sender = alert.sender_name || 'Anonymous User';
+                const time = alert.created_at ? new Date(alert.created_at).toLocaleTimeString() : '';
+
+                return `
+                <div style="background:${bg}; border:1px solid ${statusColor}; border-left:5px solid ${statusColor}; padding:1rem; border-radius:0.5rem; margin-bottom:1rem; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <strong style="color:${statusColor}; display:block; margin-bottom:0.25rem;">
+                            <i class="fas fa-exclamation-triangle"></i> ALERT
+                        </strong>
+                        <div style="color:#1e293b; font-weight:600;">${alert.message}</div>
+                        <div style="font-size:0.85rem; color:#64748b; margin-top:0.25rem;">
+                            <span style="color:#475569;">District: ${alert.district}</span><br>
+                            ${time} <br>
+                            ${acceptedText}
+                        </div>
+                    </div>
+                    <div>
+                        ${!isAccepted ? `
+                            <button onclick="acceptAlert(${alert.id})" 
+                                style="background:${statusColor}; color:white; border:none; padding:0.5rem 1.5rem; border-radius:0.375rem; font-weight:600; cursor:pointer; box-shadow:0 2px 4px rgba(239, 68, 68, 0.3);">
+                                ACCEPT
+                            </button>
+                        ` : `
+                            <span style="color:#059669; font-weight:600; background:white; padding:0.5rem 1rem; border-radius:2rem; border:1px solid #10b981;">
+                                <i class="fas fa-check"></i> Accepted
+                            </span>
+                        `}
+                    </div>
+                </div>
+                `;
+            }).join('');
+        });
+    }
+
+    window.acceptAlert = async (alertId) => {
+        try {
+            const res = await fetch('/api/accept_alert', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ alert_id: alertId })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                // Refresh immediately
+                const r = await fetch('/api/my_alerts');
+                const alerts = await r.json();
+                renderAlerts(alerts);
+            } else {
+                alert(result.message);
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error accepting alert");
+        }
+    };
+
+    async function fetchPoliceComplaints() {
+        // Also start alerting if not started (idempotent check ideally, or just call here)
+        // Simple singleton check:
+        if (!window.pollingStarted) {
+            window.pollingStarted = true;
+            startAlertPolling();
+        }
+
+        const tbody = document.getElementById('complaintsBody');
+        tbody.innerHTML = '<tr><td colspan="6" style="padding:1rem; text-align:center;">Loading...</td></tr>';
+
+        try {
+            const res = await fetch('/api/my_complaints');
+            const complaints = await res.json();
+            if (complaints.length > 0) {
+                tbody.innerHTML = complaints.map(c => `
+                    <tr style="border-bottom:1px solid #e2e8f0; background:white;">
+                        <td style="padding:0.75rem; font-weight:500;">${c.full_name}</td>
+                        <td style="padding:0.75rem; text-align:center;">
+                            <button onclick='viewFIRDetail(${JSON.stringify(c).replace(/'/g, "&#39;")})' 
+                                style="padding:0.4rem 1.2rem; background:var(--primary-color); color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.9rem;">
+                                Showing
+                            </button>
+                        </td>
+                        <td style="padding:0.75rem;">
+                             <select onchange="updateComplaintStatus(${c.id}, this.value)" 
+                                style="padding:0.4rem; border:1px solid #e2e8f0; border-radius:4px; font-size:0.9rem; color:#475569; width:100%;">
+                                <option value="Pending" ${c.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                                <option value="In Progress" ${c.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                                <option value="Resolved" ${c.status === 'Resolved' ? 'selected' : ''}>Resolved</option>
+                                <option value="Rejected" ${c.status === 'Rejected' ? 'selected' : ''}>Rejected</option>
+                            </select>
+                        </td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="4" style="padding:1rem; text-align:center; color:#64748b;">No complaints found.</td></tr>';
+            }
+        } catch (e) {
+            console.error(e);
+            tbody.innerHTML = '<tr><td colspan="6" style="padding:1rem; text-align:center; color:var(--danger-color);">Error loading complaints.</td></tr>';
+        }
+    }
+
+    window.viewFIRDetail = (fir) => {
+        const modal = document.getElementById('firModal');
+        const form = document.getElementById('firForm');
+        const view = document.getElementById('firReadOnlyView');
+        const title = document.getElementById('firModalTitle');
+
+        // Toggle Views
+        form.style.display = 'none';
+        view.style.display = 'block';
+        title.textContent = "Complaint Details";
+
+        // Helper to format date
+        let displayDate = fir.nepali_date || '';
+        if (!displayDate && fir.created_at) {
+            try {
+                const Converter = window.NepaliDateConverter || window.NepaliDate || window.default;
+                if (Converter) displayDate = new Converter(new Date(fir.created_at)).format('YYYY-MM-DD');
+            } catch (e) { }
+            if (!displayDate) displayDate = new Date(fir.created_at).toLocaleDateString() + ' (AD)';
+        }
+
+        // Generate Content
+        view.innerHTML = `
+            <div id="firContentToDownload">
+                <div style="display:grid; gap:1rem; font-size:1rem; color:#1e293b;">
+                    <div style="border-bottom:1px solid #e2e8f0; padding-bottom:0.5rem;">
+                        <strong style="display:block; color:#64748b; font-size:0.85rem; margin-bottom:0.2rem;">Full Name</strong>
+                        ${fir.full_name}
+                    </div>
+                    <div style="border-bottom:1px solid #e2e8f0; padding-bottom:0.5rem;">
+                        <strong style="display:block; color:#64748b; font-size:0.85rem; margin-bottom:0.2rem;">Incident Date (BS)</strong>
+                        ${displayDate}
+                    </div>
+                    <div style="border-bottom:1px solid #e2e8f0; padding-bottom:0.5rem;">
+                        <strong style="display:block; color:#64748b; font-size:0.85rem; margin-bottom:0.2rem;">Location</strong>
+                        ${fir.police_station}, ${fir.district}, ${fir.province || ''}
+                    </div>
+                    <div style="border-bottom:1px solid #e2e8f0; padding-bottom:0.5rem;">
+                        <strong style="display:block; color:#64748b; font-size:0.85rem; margin-bottom:0.2rem;">Contact Info</strong>
+                        ${fir.contact_info}
+                    </div>
+                    <div style="border-bottom:1px solid #e2e8f0; padding-bottom:0.5rem;">
+                        <strong style="display:block; color:#64748b; font-size:0.85rem; margin-bottom:0.2rem;">Crime Type</strong>
+                        ${fir.crime_type}
+                    </div>
+                    <div style="padding-bottom:0.5rem;">
+                        <strong style="display:block; color:#64748b; font-size:0.85rem; margin-bottom:0.2rem;">Description</strong>
+                        <div style="background:#f8fafc; padding:0.75rem; border-radius:0.375rem; white-space:pre-wrap;">${fir.description}</div>
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top:1.5rem; text-align:right;">
+                <button onclick="downloadFIR(${fir.id || 'new'})" 
+                    style="padding:0.6rem 1.2rem; background:#475569; color:white; border:none; border-radius:0.375rem; cursor:pointer; display:inline-flex; align-items:center; gap:0.5rem;">
+                    <i class="fas fa-file-pdf"></i> Download PDF
+                </button>
+            </div>
+        `;
+
+        modal.style.display = 'flex';
+    };
+
+    window.downloadFIR = (id) => {
+        const element = document.getElementById('firContentToDownload');
+        const opt = {
+            margin: 1,
+            filename: `FIR_${id}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2 },
+            jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+        };
+        html2pdf().set(opt).from(element).save();
+    };
+
+    window.updateComplaintStatus = async (id, status) => {
+        if (!confirm(`Are you sure you want to update status to ${status}?`)) return;
+
+        try {
+            const res = await fetch('/api/update_status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, status })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                alert('Status Updated');
+                fetchPoliceComplaints(); // Refresh list
+            } else {
+                alert('Update Failed: ' + (data.error || 'Unknown error'));
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Network error updating status');
+        }
+    };
+
+    // Global Modal Functions
+    // ... (existing)
+    window.openFIRModal = (stationName, districtName) => {
+        const modal = document.getElementById('firModal');
+        const form = document.getElementById('firForm');
+        const view = document.getElementById('firReadOnlyView');
+        const title = document.getElementById('firModalTitle');
+
+        // Reset View State
+        form.style.display = 'block';
+        view.style.display = 'none';
+        title.textContent = "File a Complaint (FIR)";
+
+        // Reset Submit Button & Inputs (in case they were disabled by viewFIRDetail old logic, though we handled that separation now)
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn) btn.style.display = 'block';
+
+        const inputs = form.querySelectorAll('input, textarea, select');
+        inputs.forEach(i => i.disabled = false);
+
+        // Set Autofill Values
+        document.getElementById('firStation').value = stationName;
+        document.getElementById('firDistrict').value = districtName;
+
+        // Lookup Province from global data
+        let province = "Unknown";
+        if (state.globalMainData) {
+            const match = state.globalMainData.find(row =>
+                (row.District && row.District.toLowerCase() === districtName.toLowerCase()) ||
+                (row.district && row.district.toLowerCase() === districtName.toLowerCase())
+            );
+            if (match) {
+                province = match.Province || match.province || "Unknown";
+            }
+        }
+        document.getElementById('firProvince').value = province;
+
+        // Populate Crime Types if empty
+        const crimeSelect = document.getElementById('firCrimeType');
+        // Check if options already exist (besides default)
+        if (crimeSelect.options.length <= 1 && state.allCrimeTypes) {
+            state.allCrimeTypes.forEach(ct => {
+                const opt = document.createElement('option');
+                opt.value = ct;
+                opt.textContent = ct;
+                crimeSelect.appendChild(opt);
+            });
+            // Add Other Option
+            const otherOpt = document.createElement('option');
+            otherOpt.value = "Other";
+            otherOpt.textContent = "Other";
+            crimeSelect.appendChild(otherOpt);
+        }
+
+        // Reset "Other" field
+        document.getElementById('firOtherCrimeType').style.display = 'none';
+        document.getElementById('firOtherCrimeType').value = '';
+        document.getElementById('firOtherCrimeType').required = false;
+
+        modal.style.display = 'flex';
+    };
+
+    window.toggleOtherCrimeType = (selectEl) => {
+        const otherInput = document.getElementById('firOtherCrimeType');
+        if (selectEl.value === 'Other') {
+            otherInput.style.display = 'block';
+            otherInput.required = true;
+        } else {
+            otherInput.style.display = 'none';
+            otherInput.required = false;
+        }
+    };
+
+    window.closeFIRModal = () => {
+        document.getElementById('firModal').style.display = 'none';
+        const form = document.getElementById('firForm');
+        form.reset();
+        document.getElementById('firOtherCrimeType').style.display = 'none';
+
+        // Re-enable all fields
+        Array.from(form.elements).forEach(el => el.disabled = false);
+
+        // Re-show submit button
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn) btn.style.display = 'block';
+    };
+
+    // Emergency Alert Handler (Global)
+    window.handleEmergencyAlert = async () => {
+        console.log("Emergency Alert Clicked");
+
+        let district = '';
+
+        // 1. Try FIR Modal Input (if modal is open/active)
+        const distEl = document.getElementById('firDistrict');
+        if (distEl && distEl.value) {
+            district = distEl.value;
+        }
+
+        // 2. Fallback: Try Alert/Map View District Name (if visible)
+        if (!district) {
+            const mapAlertName = document.getElementById('alertDistrictName');
+            const mapAlertContainer = document.getElementById('mapAlertContainer');
+
+            // Check if the container is actually visible
+            if (mapAlertName && mapAlertContainer && mapAlertContainer.style.display !== 'none') {
+                district = mapAlertName.textContent.trim();
+                // Clean up any extra text if needed (e.g. if it says "District: Kathmandu")
+                // Assuming it just contains the name as set by updateAlertAnalysis(districtName)
+            }
+        }
+
+        console.log("District for Alert:", district);
+
+        if (!district || district === 'District Name') {
+            alert("Please select a Police Station or Click a District on the Map first.");
+            return;
+        }
+
+        if (confirm(`⚠️ EMERGENCY ALERT CONFIRMATION ⚠️\n\nAre you sure you want to send an emergency alert to ALL police stations in ${district}?\n\nThis action cannot be undone.`)) {
+            try {
+                const res = await fetch('/api/create_alert', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ district: district, message: `Emergency Reported in ${district}` })
+                });
+                const result = await res.json();
+
+                if (result.status === 'success') {
+                    alert("✅ ALERT SENT SUCCESSFULLY!\n\nNotifications have been dispatched. You will be notified when a station accepts.");
+
+                    // Visual Feedback
+                    const alertBtns = document.querySelectorAll('#emergencyAlertBtn');
+                    alertBtns.forEach(btn => {
+                        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Alert Active - Waiting...';
+                        btn.style.background = '#f59e0b'; // Orange/Yellow
+                        btn.disabled = true;
+                    });
+
+                    // Start Polling for Acceptance
+                    const alertId = result.alert_id;
+                    if (alertId) {
+                        const pollInterval = setInterval(async () => {
+                            try {
+                                const pres = await fetch('/api/alert_status/' + alertId);
+                                if (!pres.ok) return;
+                                const pdata = await pres.json();
+
+                                if (pdata.status === 'Accepted') {
+                                    clearInterval(pollInterval);
+                                    // Notification Logic
+                                    alert(`ℹ️ NOTIFICATION\n\nYour Emergency Alert has been ACCEPTED by:\n${pdata.accepted_by}`);
+
+                                    alertBtns.forEach(btn => {
+                                        btn.innerHTML = `<i class="fas fa-check-double"></i> Accepted by ${pdata.accepted_by}`;
+                                        btn.style.background = '#059669';
+                                    });
+                                }
+                            } catch (e) { console.error("Poll error:", e); }
+                        }, 3000);
+                    }
+                } else {
+                    alert("Failed to send alert: " + result.message);
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Network error sending alert.");
+            }
+        }
+    };
+
+    window.handleFIRSubmit = async (event) => {
+        event.preventDefault();
+        const btn = event.target.querySelector('button[type="submit"]');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Submitting...";
+
+        const formData = new FormData(event.target);
+        const data = Object.fromEntries(formData.entries());
+
+        // Handle "Other" crime type
+        if (data.crime_type === 'Other' && data.other_crime_type) {
+            data.crime_type = data.other_crime_type; // Override with custom value
+        }
+
+        try {
+            const res = await fetch('/api/submit_fir', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+
+            if (result.status === 'success') {
+                alert('Complaint filed successfully! Reference ID: ' + (Math.floor(Math.random() * 10000)));
+                window.closeFIRModal();
+            } else {
+                alert('Error: ' + result.message);
+            }
+        } catch (error) {
+            console.error("FIR Submit Error:", error);
+            alert('Failed to submit complaint. Please try again.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+    };
 
     init();
 });

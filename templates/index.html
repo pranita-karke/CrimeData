@@ -15,6 +15,8 @@
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="{{ url_for('static', filename='js/nepali_date.js') }}"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 
 <body>
@@ -24,418 +26,581 @@
         <div class="brand">
             <i class="fas fa-chart-line"></i> Nepal GBV Analytics
         </div>
-        <div class="nav-links">
-            <a class="nav-link active">Home</a>
-            <a class="nav-link">Prediction</a>
-            <a class="nav-link">Alert</a>
+        <div class="nav-menu">
+            <button class="nav-item active" onclick="switchTab('home')">Home</button>
+            <button class="nav-item" onclick="switchTab('prediction')">Prediction</button>
+
+            {% if user and user.role != 'police' %}
+            <button class="nav-item" onclick="switchTab('alert')">Alert</button>
+            {% endif %}
+
+            {% if user and user.role == 'police' %}
+            <button class="nav-item" onclick="switchTab('notifications')">Notifications</button>
+            <button class="nav-item" onclick="switchTab('complaints')">Complaints</button>
+            {% endif %}
+
+            {% if user %}
+            <div class="user-info">
+                <span class="user-name">
+                    {{ user.full_name }} ({{ user.role|title }})
+                </span>
+                <a href="/logout" class="nav-logout">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+            {% else %}
+            <div class="user-info" style="margin-left: 2rem;">
+                <a href="/login" style="color: var(--primary-color); text-decoration: none; font-weight: 600;">Login</a>
+            </div>
+            {% endif %}
         </div>
     </nav>
 
     <!-- Main Content Container via white background -->
     <div class="main-container">
 
-        <!-- Filters Area -->
-        <!-- Dashboard Category Tabs (Sub-nav for Home) -->
-        <div class="nav-tabs">
-            <div class="nav-tab active" data-tab="main-crime">
-                <i class="fas fa-file-invoice"></i> Main Crime Data
-            </div>
-            <div class="nav-tab" data-tab="demographics">
-                <i class="fas fa-users"></i> Victim Demographics
-            </div>
-            <div class="nav-tab" data-tab="police">
-                <i class="fas fa-shield-alt"></i> Police Performance
-            </div>
-            <div class="nav-tab" data-tab="combined">
-                <i class="fas fa-layer-group"></i> Combined Analysis
-            </div>
-        </div>
-
-        <!-- CONTENT PANES -->
-
-        <!-- ... existing panes ... -->
-
-        <!-- Tab Content: Alert (New) -->
-        <div id="alert" class="tab-pane">
-            <div class="stat-card full-width" style="height: auto; margin-bottom: 1rem;">
-                <div class="stat-title">Interactive District Map</div>
-                <div style="color: var(--text-secondary); margin-bottom: 1rem;">
-                    Click on any district to view its name.
+        <!-- HOME TAB WRAPPER -->
+        <div id="home" style="display: block;">
+            <!-- Filters Area -->
+            <!-- Dashboard Category Tabs (Sub-nav for Home) -->
+            <div class="nav-tabs">
+                <div class="nav-tab active" data-tab="main-crime">
+                    <i class="fas fa-file-invoice"></i> Main Crime Data
                 </div>
-                <div id="nepalMap" style="height: 600px; width: 100%; border-radius: 0.5rem; z-index: 1;"></div>
+                <div class="nav-tab" data-tab="demographics">
+                    <i class="fas fa-users"></i> Victim Demographics
+                </div>
+                <div class="nav-tab" data-tab="police">
+                    <i class="fas fa-shield-alt"></i> Police Performance
+                </div>
+                <div class="nav-tab" data-tab="combined">
+                    <i class="fas fa-layer-group"></i> Combined Analysis
+                </div>
             </div>
 
-            <!-- New Alert Box -->
-            <div id="mapAlertContainer" style="display:none; animation: fadeIn 0.5s;">
-                <div class="stat-card full-width" style="border-left: 6px solid #e2e8f0; height: auto;">
-                    <h2 style="margin:0 0 1rem; display:flex; align-items:center; gap:0.5rem;">
-                        <span id="alertDistrictName">District Name</span>
-                        <span id="alertRiskBadge"
-                            style="font-size:0.8em; padding:0.2em 0.6em; border-radius:0.4em; background:#94a3b8; color:white;">Status</span>
-                    </h2>
+            <!-- CONTENT PANES -->
 
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1.5rem;">
-                        <div>
-                            <h4 style="color:var(--text-secondary); margin-bottom:0.5rem;">Risk Assessment</h4>
-                            <p id="alertRiskText" style="font-size:1.1rem; font-weight:500;">Analysis...</p>
-                        </div>
-                        <div>
-                            <h4 style="color:var(--text-secondary); margin-bottom:0.5rem;">Critical Alerts</h4>
-                            <ul id="alertRisingCrimes"
-                                style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:0.5rem;">
-                                <!-- Items -->
-                            </ul>
-                        </div>
+            <!-- ... existing panes ... -->
+
+            <!-- Alert Tab Moved to Bottom -->
+
+
+
+            <!-- FIR Modal Removed from here -->
+
+
+
+            <!-- Tab Content: Main Crime -->
+            <div id="main-crime" class="tab-pane active">
+                <!-- Main Crime Filters -->
+                <div class="filters-section">
+                    <div class="filter-group">
+                        <label><i class="fas fa-calendar-alt"></i> Year</label>
+                        <select id="mainYear" class="filter-select">
+                            <option value="">Select Year</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fas fa-map-marker-alt"></i> Province</label>
+                        <select id="mainProvince" class="filter-select">
+                            <option value="">Select Province</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fas fa-building"></i> District</label>
+                        <select id="mainDistrict" class="filter-select">
+                            <option value="">Select District</option>
+                        </select>
+                    </div>
+                    <div class="filter-actions">
+                        <button id="mainSearchBtn"
+                            style="padding:0.6rem 1.5rem; background:var(--primary-color); color:white; border:none; border-radius:0.375rem; cursor:pointer; font-weight:600;"><i
+                                class="fas fa-search"></i> Search</button>
+                        <button onclick="resetMainFilters()"
+                            style="padding:0.6rem 1.5rem; background:white; color:var(--text-secondary); border:1px solid var(--border-color); border-radius:0.375rem; cursor:pointer; font-weight:600;">Reset</button>
                     </div>
                 </div>
 
-                <!-- Police Stations List -->
-                <div class="stat-card full-width" style="margin-top:1rem; height:auto;">
-                    <h3 style="margin:0 0 1rem; color:var(--text-primary);"><i class="fas fa-building-shield"></i> Local
+                <div class="charts-container" style="grid-template-columns: 1fr;">
+                    <div class="chart-card">
+                        <div class="chart-header"
+                            style="display:flex; justify-content:space-between; align-items:center;">
+                            <span>Crime Type Analysis</span>
+                            <div class="chart-toggle">
+                                <button onclick="toggleChartType('pie')" class="toggle-btn active" id="btnPie"><i
+                                        class="fas fa-chart-pie"></i> Pie</button>
+                                <button onclick="toggleChartType('bar')" class="toggle-btn" id="btnBar"><i
+                                        class="fas fa-chart-bar"></i> Bar</button>
+                            </div>
+                        </div>
+                        <canvas id="crimeTypeChart"></canvas>
+                        <div id="crimeSummary"
+                            style="margin-top: 1rem; padding: 1rem; background: rgba(37, 99, 235, 0.1); border-radius: 0.5rem; color: var(--text-primary);">
+                            <h4 style="margin: 0 0 0.5rem 0; color:var(--primary-color);">Analysis Note</h4>
+                            <p style="margin: 0; font-size: 1rem; line-height: 1.5;" id="mainCrimeInsight">Select
+                                filters and click Search to see analysis.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Demographics -->
+            <div id="demographics" class="tab-pane">
+                <!-- Demographics Filters -->
+                <div class="filters-section">
+                    <div class="filter-group">
+                        <label><i class="fas fa-calendar-alt"></i> Year</label>
+                        <select id="demoYear" class="filter-select">
+                            <option value="">Select Year</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fas fa-map-marker-alt"></i> Province</label>
+                        <select id="demoProvince" class="filter-select">
+                            <option value="">Select Province</option>
+                        </select>
+                    </div>
+                    <div class="filter-actions">
+                        <button id="demoSearchBtn"
+                            style="padding:0.6rem 1.5rem; background:var(--primary-color); color:white; border:none; border-radius:0.375rem; cursor:pointer; font-weight:600;"><i
+                                class="fas fa-search"></i> Search</button>
+                        <button onclick="resetDemoFilters()"
+                            style="padding:0.6rem 1.5rem; background:white; color:var(--text-secondary); border:1px solid var(--border-color); border-radius:0.375rem; cursor:pointer; font-weight:600;">Reset</button>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin-bottom: 2rem;">
+
+                    <!-- Gender Stats -->
+                    <div class="stat-card" style="height: auto;">
+                        <h3 class="stat-title"><i class="fas fa-venus-mars"></i> Victim Gender</h3>
+                        <div
+                            style="display: flex; justify-content: space-around; margin-top: 1rem; text-align: center;">
+                            <div>
+                                <div id="demFemalePct" style="font-size: 1.5rem; font-weight: bold; color: #ec4899;">0%
+                                </div>
+                                <div style="font-size: 0.8rem; color: #64748b;">FEMALE (<span
+                                        id="demFemaleCount">0</span>)
+                                </div>
+                            </div>
+                            <div>
+                                <div id="demMalePct" style="font-size: 1.5rem; font-weight: bold; color: #3b82f6;">0%
+                                </div>
+                                <div style="font-size: 0.8rem; color: #64748b;">MALE (<span id="demMaleCount">0</span>)
+                                </div>
+                            </div>
+                            <div>
+                                <div id="demUnknownPct" style="font-size: 1.5rem; font-weight: bold; color: #94a3b8;">0%
+                                </div>
+                                <div style="font-size: 0.8rem; color: #64748b;">UNKNOWN (<span
+                                        id="demUnknownCount">0</span>)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Education Stats -->
+                    <div class="stat-card" style="height: auto;">
+                        <h3 class="stat-title"><i class="fas fa-user-graduate"></i> Victim Education</h3>
+                        <div style="height: 250px; margin-bottom: 1rem;">
+                            <canvas id="eduChart"></canvas>
+                        </div>
+                        <div id="eduStatsContainer"
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 1rem;">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Relationship Stats -->
+                    <div class="stat-card" style="height: auto;">
+                        <h3 class="stat-title"><i class="fas fa-users"></i> Offender-Victim Relationship</h3>
+                        <div style="height: 250px; margin-bottom: 1rem;">
+                            <canvas id="relChart"></canvas>
+                        </div>
+                        <div id="relStatsContainer"
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 1rem;">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Age Group Stats -->
+                    <div class="stat-card" style="height: auto;">
+                        <h3 class="stat-title"><i class="fas fa-child"></i> Age Groups</h3>
+                        <div style="height: 250px; margin-bottom: 1rem;">
+                            <canvas id="ageChart"></canvas>
+                        </div>
+                        <div id="ageStatsContainer"
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 1rem;">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Known Offender -->
+                    <div class="stat-card full-width" style="grid-column: 1 / -1;">
+                        <h3 class="stat-title"><i class="fas fa-user-check"></i> Known Offender Statistics</h3>
+                        <div style="margin-top: 1rem; text-align: center;">
+                            <div id="knownOffenderVal"
+                                style="font-size: 2rem; font-weight: bold; color: var(--success-color);">0%
+                            </div>
+                            <p style="margin:0; color:var(--text-secondary);">of cases involved a known offender</p>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Tab Content: Police -->
+            <div id="police" class="tab-pane">
+                <!-- Police Filters -->
+                <div class="filters-section">
+                    <div class="filter-group">
+                        <label><i class="fas fa-calendar-alt"></i> Year</label>
+                        <select id="polYear" class="filter-select">
+                            <option value="">Select Year</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fas fa-map-marker-alt"></i> Province</label>
+                        <select id="polProvince" class="filter-select">
+                            <option value="">Select Province</option>
+                        </select>
+                    </div>
+                    <div class="filter-actions">
+                        <button id="polSearchBtn"
+                            style="padding:0.6rem 1.5rem; background:var(--primary-color); color:white; border:none; border-radius:0.375rem; cursor:pointer; font-weight:600;"><i
+                                class="fas fa-search"></i> Search</button>
+                        <button onclick="resetPolFilters()"
+                            style="padding:0.6rem 1.5rem; background:white; color:var(--text-secondary); border:1px solid var(--border-color); border-radius:0.375rem; cursor:pointer; font-weight:600;">Reset</button>
+                    </div>
+                </div>
+
+                <div class="stats-grid" style="margin-bottom: 2rem;">
+                    <div class="stat-card" style="border-left: 4px solid var(--warning-color);">
+                        <div class="stat-title">Opened Cases</div>
+                        <div class="stat-value" id="polOpenedVal">0</div>
+                        <div style="font-size: 0.9rem; color: var(--text-secondary);" id="polOpenedPct">0%</div>
+                    </div>
+                    <div class="stat-card" style="border-left: 4px solid var(--success-color);">
+                        <div class="stat-title">Closed Cases</div>
+                        <div class="stat-value" id="polClosedVal">0</div>
+                        <div style="font-size: 0.9rem; color: var(--text-secondary);" id="polClosedPct">0%</div>
+                    </div>
+                </div>
+
+                <div class="charts-container">
+                    <div class="chart-card full-width">
+                        <div class="chart-header">Case Status Distribution</div>
+                        <div style="height: 100%; display: flex; justify-content: center;">
+                            <canvas id="openedClosedChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Combined -->
+            <div id="combined" class="tab-pane">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem;">
+
+                    <!-- Moved Header Stats -->
+                    <div class="stat-card" style="border-top: 4px solid var(--primary-color);">
+                        <div class="stat-title">Total Crime Cases</div>
+                        <div class="stat-value" id="combTotalCases">0</div>
+                    </div>
+                    <div class="stat-card" style="border-top: 4px solid var(--warning-color);">
+                        <div class="stat-title">Clearance Rate (Police)</div>
+                        <div class="stat-value" id="combClearanceRate">0%</div>
+                    </div>
+                    <div class="stat-card" style="border-top: 4px solid var(--danger-color);">
+                        <div class="stat-title">Top Crime Type</div>
+                        <div class="stat-value" id="combTopCrime" style="font-size: 1.2rem;">-</div>
+                    </div>
+                    <div class="stat-card" style="border-top: 4px solid var(--success-color);">
+                        <div class="stat-title">Active Police Cases</div>
+                        <div class="stat-value" id="combActiveCases">0</div>
+                    </div>
+
+                    <!-- Crime vs Police Ratio Removed -->
+
+                </div>
+
+                <!-- Province-wise Trend Chart -->
+                <div class="stat-card full-width" style="border-top: 4px solid #06b6d4; margin-top: 1rem;">
+                    <div class="stat-title">Crime Trend by Province (YoY)</div>
+                    <div style="height: 400px; position: relative;">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Analysis Text Card -->
+                <div class="stat-card full-width" style="margin-top: 1rem; height: auto;">
+                    <div class="stat-title" style="margin-bottom: 0.5rem;">Analysis</div>
+                    <div id="trendAnalysis" style="font-size: 0.95rem; color: var(--text-primary); line-height: 1.6;">
+                        Loading trend analysis...
+                    </div>
+                </div>
+
+                <!-- Removed High Risk and Trend sections as per user request -->
+            </div>
+        </div>
+    </div> <!-- END HOME TAB WRAPPER -->
+
+    <!-- Police Dashboard -->
+    <div id="policeDashboard" class="dashboard-section" style="display: none;">
+
+        <!-- Real-time Alerts Container -->
+        <div id="alertsContainer" style="margin-bottom: 2rem;">
+            <!-- Alerts injected here via JS -->
+        </div>
+
+        <div class="stats-grid">
+            <!-- Stats will be dynamically loaded here -->
+        </div>
+    </div>
+
+    <!-- Tab Content: Alert -->
+    <div id="alert" class="tab-pane" style="display:none;">
+        <div class="stat-card full-width" style="height: auto; margin-bottom: 1rem;">
+            <div class="stat-title">Interactive District Map</div>
+            <div style="color: var(--text-secondary); margin-bottom: 1rem;">
+                Click on any district to view its name.
+            </div>
+            <div id="nepalMap" style="height: 600px; width: 100%; border-radius: 0.5rem; z-index: 1;"></div>
+        </div>
+
+        <!-- New Alert Box -->
+        <div id="mapAlertContainer" style="display:none; animation: fadeIn 0.5s;">
+            <div class="stat-card full-width" style="border-left: 6px solid #e2e8f0; height: auto;">
+                <h2 style="margin:0 0 1rem; display:flex; align-items:center; gap:0.5rem;">
+                    <span id="alertDistrictName">District Name</span>
+                    <span id="alertRiskBadge"
+                        style="font-size:0.8em; padding:0.2em 0.6em; border-radius:0.4em; background:#94a3b8; color:white;">Status</span>
+                </h2>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1.5rem;">
+                    <div>
+                        <h4 style="color:var(--text-secondary); margin-bottom:0.5rem;">Risk Assessment</h4>
+                        <p id="alertRiskText" style="font-size:1.1rem; font-weight:500;">Analysis...</p>
+                    </div>
+                    <div>
+                        <h4 style="color:var(--text-secondary); margin-bottom:0.5rem;">Critical Alerts</h4>
+                        <ul id="alertRisingCrimes"
+                            style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:0.5rem;">
+                            <!-- Items -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Police Stations List -->
+            <div class="stat-card full-width" style="margin-top:1rem; height:auto;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <h3 style="margin:0; color:var(--text-primary);"><i class="fas fa-building-shield"></i> Local
                         Police Stations</h3>
-                    <div style="max-height: 250px; overflow-y: auto;">
-                        <table style="width:100%; border-collapse: collapse;">
-                            <thead>
-                                <tr style="background:#f8fafc; text-align:left;">
-                                    <th style="padding:0.75rem; color:var(--text-secondary);">Station Name</th>
-                                    <th style="padding:0.75rem; color:var(--text-secondary);">Phone</th>
-                                </tr>
-                            </thead>
-                            <tbody id="policeStationsBody">
-                                <!-- Populated dynamically -->
-                            </tbody>
-                        </table>
+                    <button id="emergencyAlertBtn" onclick="handleEmergencyAlert()"
+                        style="padding:0.6rem 1.2rem; background:var(--danger-color); color:white; border:none; border-radius:0.375rem; font-weight:600; cursor:pointer; display:none;">
+                        <i class="fas fa-bullhorn"></i> Emergency Alert
+                    </button>
+                </div>
+                <div style="max-height: 250px; overflow-y: auto;">
+                    <table style="width:100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background:#f8fafc; text-align:left;">
+                                <th style="padding:0.75rem; color:var(--text-secondary);">Station Name</th>
+                                <th style="padding:0.75rem; color:var(--text-secondary);">Phone</th>
+                                <th style="padding:0.75rem; color:var(--text-secondary); text-align:right;">Action
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="policeStationsBody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab Content: Prediction -->
+    <div id="prediction" class="tab-pane">
+        <div class="filters-section">
+            <div class="filter-group">
+                <label><i class="fas fa-clock"></i> Target Year</label>
+                <select id="predYear" class="filter-select">
+                    <option value="2082">2082</option>
+                    <option value="2083">2083</option>
+                    <option value="2084">2084</option>
+                    <option value="2085">2085</option>
+                    <option value="2086">2086</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label><i class="fas fa-map-marker-alt"></i> Province</label>
+                <select id="predProvince" class="filter-select">
+                    <option value="">Select Province</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label><i class="fas fa-building"></i> District</label>
+                <select id="predDistrict" class="filter-select">
+                    <option value="">Select District</option>
+                </select>
+            </div>
+            <div class="filter-actions">
+                <button id="predBtn"
+                    style="padding:0.6rem 1.5rem; background:var(--primary-color); color:white; border:none; border-radius:0.375rem; cursor:pointer; font-weight:600;">Predict
+                    Crime Trends</button>
+                <button onclick="resetPredFilters()"
+                    style="padding:0.6rem 1.5rem; background:white; color:var(--text-secondary); border:1px solid var(--border-color); border-radius:0.375rem; cursor:pointer; font-weight:600;">Reset</button>
+            </div>
+        </div>
+
+        <div id="predictionResults" style="display:none; animation: fadeIn 0.5s;">
+            <!-- Safety Status Card -->
+            <div style="background: white; border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 2rem; border-left: 6px solid #e2e8f0;"
+                id="safetyCard">
+                <h2 style="margin:0; font-size:1.5rem;">Predicted Status: <span id="predSafetyStatus">Stable</span>
+                </h2>
+                <p style="margin:0.5rem 0 0; color:#64748b;">
+                    Forecast for <span id="predTargetYearLabel">...</span> shows approx. <strong
+                        id="predTotalCount">...</strong> cases.
+                </p>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
+
+                <!-- Chart Section -->
+                <div class="chart-card">
+                    <div class="chart-header">Projected Crime Distribution</div>
+                    <canvas id="predictionChart"></canvas>
+                </div>
+
+                <!-- Rising Crimes List -->
+                <div class="stat-card" style="height: auto;">
+                    <h3 class="stat-title" style="color:var(--danger-color);"><i class="fas fa-chart-line"></i>
+                        Rising Crimes Alert!</h3>
+                    <p style="font-size:0.9rem; color:#64748b; margin-bottom:1rem;">These crimes are
+                        trending upwards based on historical patterns:</p>
+                    <div id="risingCrimesList" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <!-- Populated by JS -->
                     </div>
                 </div>
             </div>
         </div>
-
     </div>
 
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
-</body>
-
-</html>
-
-<!-- Tab Content: Main Crime -->
-<div id="main-crime" class="tab-pane active">
-    <!-- Main Crime Filters -->
-    <div class="filters-section">
-        <div class="filter-group">
-            <label><i class="fas fa-calendar-alt"></i> Year</label>
-            <select id="mainYear" class="filter-select">
-                <option value="">Select Year</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <label><i class="fas fa-map-marker-alt"></i> Province</label>
-            <select id="mainProvince" class="filter-select">
-                <option value="">Select Province</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <label><i class="fas fa-building"></i> District</label>
-            <select id="mainDistrict" class="filter-select">
-                <option value="">Select District</option>
-            </select>
-        </div>
-        <div class="filter-actions">
-            <button id="mainSearchBtn"
-                style="padding:0.6rem 1.5rem; background:var(--primary-color); color:white; border:none; border-radius:0.375rem; cursor:pointer; font-weight:600;"><i
-                    class="fas fa-search"></i> Search</button>
-            <button onclick="resetMainFilters()"
-                style="padding:0.6rem 1.5rem; background:white; color:var(--text-secondary); border:1px solid var(--border-color); border-radius:0.375rem; cursor:pointer; font-weight:600;">Reset</button>
+    <!-- Tab Content: Notifications (Police Only) -->
+    <div id="notifications" class="tab-pane">
+        <div class="stat-card full-width">
+            <div class="stat-title">Emergency Alerts</div>
+            <div id="notificationList" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                <div style="padding: 1rem; text-align: center; color: var(--text-secondary);">Loading alerts...</div>
+            </div>
         </div>
     </div>
 
-    <div class="charts-container" style="grid-template-columns: 1fr;">
-        <div class="chart-card">
-            <div class="chart-header" style="display:flex; justify-content:space-between; align-items:center;">
-                <span>Crime Type Analysis</span>
-                <div class="chart-toggle">
-                    <button onclick="toggleChartType('pie')" class="toggle-btn active" id="btnPie"><i
-                            class="fas fa-chart-pie"></i> Pie</button>
-                    <button onclick="toggleChartType('bar')" class="toggle-btn" id="btnBar"><i
-                            class="fas fa-chart-bar"></i> Bar</button>
+    <!-- Tab Content: Complaints (Police Only) -->
+    <div id="complaints" class="tab-pane">
+        <div class="stat-card full-width">
+            <div class="stat-title">Registered Complaints (FIRs)</div>
+            <div style="overflow-x: auto; margin-top: 1rem;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f8fafc; border-bottom: 2px solid var(--border-color);">
+                            <th style="padding: 0.75rem; text-align: left; width: 30%;">Name</th>
+                            <th style="padding: 0.75rem; text-align: center; width: 20%;">Show</th>
+                            <th style="padding: 0.75rem; text-align: left; width: 30%;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="complaintsBody">
+                        <!-- Populated via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- End Prediction Tab Wrapper -->
+
+    </div> <!-- End Main Container -->
+
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=10003"></script>
+
+    <!-- FIR Modal (Moved to End) -->
+    <div id="firModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="firModalTitle" style="margin:0; font-size:1.5rem;">File a Complaint (FIR)</h2>
+                <button class="close-modal" onclick="closeFIRModal()">&times;</button>
+            </div>
+
+            <!-- Read Only View (Hidden by default) -->
+            <div id="firReadOnlyView" style="display:none; padding:1rem;">
+                <!-- Content injected via JS -->
+            </div>
+
+            <form id="firForm" onsubmit="handleFIRSubmit(event)">
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" name="full_name" class="form-control" required
+                        placeholder="Enter your full name">
                 </div>
-            </div>
-            <canvas id="crimeTypeChart"></canvas>
-            <div id="crimeSummary"
-                style="margin-top: 1rem; padding: 1rem; background: rgba(37, 99, 235, 0.1); border-radius: 0.5rem; color: var(--text-primary);">
-                <h4 style="margin: 0 0 0.5rem 0; color:var(--primary-color);">Analysis Note</h4>
-                <p style="margin: 0; font-size: 1rem; line-height: 1.5;" id="mainCrimeInsight">Select
-                    filters and click Search to see analysis.</p>
-            </div>
-        </div>
-    </div>
-</div>
 
-<!-- Tab Content: Demographics -->
-<div id="demographics" class="tab-pane">
-    <!-- Demographics Filters -->
-    <div class="filters-section">
-        <div class="filter-group">
-            <label><i class="fas fa-calendar-alt"></i> Year</label>
-            <select id="demoYear" class="filter-select">
-                <option value="">Select Year</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <label><i class="fas fa-map-marker-alt"></i> Province</label>
-            <select id="demoProvince" class="filter-select">
-                <option value="">Select Province</option>
-            </select>
-        </div>
-        <div class="filter-actions">
-            <button id="demoSearchBtn"
-                style="padding:0.6rem 1.5rem; background:var(--primary-color); color:white; border:none; border-radius:0.375rem; cursor:pointer; font-weight:600;"><i
-                    class="fas fa-search"></i> Search</button>
-            <button onclick="resetDemoFilters()"
-                style="padding:0.6rem 1.5rem; background:white; color:var(--text-secondary); border:1px solid var(--border-color); border-radius:0.375rem; cursor:pointer; font-weight:600;">Reset</button>
-        </div>
-    </div>
+                <div class="form-group">
+                    <label>Incident Date (BS)</label>
+                    <input type="text" name="nepali_date" class="form-control" placeholder="YYYY-MM-DD (BS)">
+                </div>
 
-    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin-bottom: 2rem;">
-
-        <!-- Gender Stats -->
-        <div class="stat-card" style="height: auto;">
-            <h3 class="stat-title"><i class="fas fa-venus-mars"></i> Victim Gender</h3>
-            <div style="display: flex; justify-content: space-around; margin-top: 1rem; text-align: center;">
-                <div>
-                    <div id="demFemalePct" style="font-size: 1.5rem; font-weight: bold; color: #ec4899;">0%
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label>Province</label>
+                        <input type="text" id="firProvince" name="province" class="form-control" readonly
+                            style="background-color: #f1f5f9;">
                     </div>
-                    <div style="font-size: 0.8rem; color: #64748b;">FEMALE (<span id="demFemaleCount">0</span>)
+                    <div class="form-group">
+                        <label>District</label>
+                        <input type="text" id="firDistrict" name="district" class="form-control" readonly
+                            style="background-color: #f1f5f9;">
                     </div>
                 </div>
-                <div>
-                    <div id="demMalePct" style="font-size: 1.5rem; font-weight: bold; color: #3b82f6;">0%
-                    </div>
-                    <div style="font-size: 0.8rem; color: #64748b;">MALE (<span id="demMaleCount">0</span>)
-                    </div>
+
+                <div class="form-group">
+                    <label>Police Station</label>
+                    <input type="text" id="firStation" name="police_station" class="form-control" readonly
+                        style="background-color: #f1f5f9;">
                 </div>
-                <div>
-                    <div id="demUnknownPct" style="font-size: 1.5rem; font-weight: bold; color: #94a3b8;">0%
-                    </div>
-                    <div style="font-size: 0.8rem; color: #64748b;">UNKNOWN (<span id="demUnknownCount">0</span>)</div>
+
+                <div class="form-group">
+                    <label>Contact Information</label>
+                    <input type="text" name="contact_info" class="form-control" placeholder="Phone number or Email">
                 </div>
-            </div>
-        </div>
 
-        <!-- Education Stats -->
-        <div class="stat-card" style="height: auto;">
-            <h3 class="stat-title"><i class="fas fa-user-graduate"></i> Victim Education</h3>
-            <div style="height: 250px; margin-bottom: 1rem;">
-                <canvas id="eduChart"></canvas>
-            </div>
-            <div id="eduStatsContainer"
-                style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 1rem;">
-                <!-- Populated by JS -->
-            </div>
-        </div>
-
-        <!-- Relationship Stats -->
-        <div class="stat-card" style="height: auto;">
-            <h3 class="stat-title"><i class="fas fa-users"></i> Offender-Victim Relationship</h3>
-            <div style="height: 250px; margin-bottom: 1rem;">
-                <canvas id="relChart"></canvas>
-            </div>
-            <div id="relStatsContainer"
-                style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 1rem;">
-                <!-- Populated by JS -->
-            </div>
-        </div>
-
-        <!-- Age Group Stats -->
-        <div class="stat-card" style="height: auto;">
-            <h3 class="stat-title"><i class="fas fa-child"></i> Age Groups</h3>
-            <div style="height: 250px; margin-bottom: 1rem;">
-                <canvas id="ageChart"></canvas>
-            </div>
-            <div id="ageStatsContainer"
-                style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 1rem;">
-                <!-- Populated by JS -->
-            </div>
-        </div>
-
-        <!-- Known Offender -->
-        <div class="stat-card full-width" style="grid-column: 1 / -1;">
-            <h3 class="stat-title"><i class="fas fa-user-check"></i> Known Offender Statistics</h3>
-            <div style="margin-top: 1rem; text-align: center;">
-                <div id="knownOffenderVal" style="font-size: 2rem; font-weight: bold; color: var(--success-color);">0%
+                <div class="form-group">
+                    <label>Crime Type</label>
+                    <select id="firCrimeType" name="crime_type" class="form-control" required
+                        onchange="toggleOtherCrimeType(this)">
+                        <option value="">Select Crime Type</option>
+                        <!-- Populated by JS -->
+                    </select>
+                    <input type="text" id="firOtherCrimeType" name="other_crime_type" class="form-control"
+                        placeholder="Specify crime type..." style="display:none; margin-top:0.5rem;">
                 </div>
-                <p style="margin:0; color:var(--text-secondary);">of cases involved a known offender</p>
-            </div>
-        </div>
 
-    </div>
-</div>
-
-<!-- Tab Content: Police -->
-<div id="police" class="tab-pane">
-    <!-- Police Filters -->
-    <div class="filters-section">
-        <div class="filter-group">
-            <label><i class="fas fa-calendar-alt"></i> Year</label>
-            <select id="polYear" class="filter-select">
-                <option value="">Select Year</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <label><i class="fas fa-map-marker-alt"></i> Province</label>
-            <select id="polProvince" class="filter-select">
-                <option value="">Select Province</option>
-            </select>
-        </div>
-        <div class="filter-actions">
-            <button id="polSearchBtn"
-                style="padding:0.6rem 1.5rem; background:var(--primary-color); color:white; border:none; border-radius:0.375rem; cursor:pointer; font-weight:600;"><i
-                    class="fas fa-search"></i> Search</button>
-            <button onclick="resetPolFilters()"
-                style="padding:0.6rem 1.5rem; background:white; color:var(--text-secondary); border:1px solid var(--border-color); border-radius:0.375rem; cursor:pointer; font-weight:600;">Reset</button>
-        </div>
-    </div>
-
-    <div class="stats-grid" style="margin-bottom: 2rem;">
-        <div class="stat-card" style="border-left: 4px solid var(--warning-color);">
-            <div class="stat-title">Opened Cases</div>
-            <div class="stat-value" id="polOpenedVal">0</div>
-            <div style="font-size: 0.9rem; color: var(--text-secondary);" id="polOpenedPct">0%</div>
-        </div>
-        <div class="stat-card" style="border-left: 4px solid var(--success-color);">
-            <div class="stat-title">Closed Cases</div>
-            <div class="stat-value" id="polClosedVal">0</div>
-            <div style="font-size: 0.9rem; color: var(--text-secondary);" id="polClosedPct">0%</div>
-        </div>
-    </div>
-
-    <div class="charts-container">
-        <div class="chart-card full-width">
-            <div class="chart-header">Case Status Distribution</div>
-            <div style="height: 100%; display: flex; justify-content: center;">
-                <canvas id="openedClosedChart"></canvas>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Tab Content: Combined -->
-<div id="combined" class="tab-pane">
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem;">
-
-        <!-- Moved Header Stats -->
-        <div class="stat-card" style="border-top: 4px solid var(--primary-color);">
-            <div class="stat-title">Total Crime Cases</div>
-            <div class="stat-value" id="combTotalCases">0</div>
-        </div>
-        <div class="stat-card" style="border-top: 4px solid var(--warning-color);">
-            <div class="stat-title">Clearance Rate (Police)</div>
-            <div class="stat-value" id="combClearanceRate">0%</div>
-        </div>
-        <div class="stat-card" style="border-top: 4px solid var(--danger-color);">
-            <div class="stat-title">Top Crime Type</div>
-            <div class="stat-value" id="combTopCrime" style="font-size: 1.2rem;">-</div>
-        </div>
-        <div class="stat-card" style="border-top: 4px solid var(--success-color);">
-            <div class="stat-title">Active Police Cases</div>
-            <div class="stat-value" id="combActiveCases">0</div>
-        </div>
-
-        <!-- Crime vs Police Ratio Removed -->
-
-    </div>
-
-    <!-- Province-wise Trend Chart -->
-    <div class="stat-card full-width" style="border-top: 4px solid #06b6d4; margin-top: 1rem;">
-        <div class="stat-title">Crime Trend by Province (YoY)</div>
-        <div style="height: 400px; position: relative;">
-            <canvas id="trendChart"></canvas>
-        </div>
-    </div>
-
-    <!-- Analysis Text Card -->
-    <div class="stat-card full-width" style="margin-top: 1rem; height: auto;">
-        <div class="stat-title" style="margin-bottom: 0.5rem;">Analysis</div>
-        <div id="trendAnalysis" style="font-size: 0.95rem; color: var(--text-primary); line-height: 1.6;">
-            Loading trend analysis...
-        </div>
-    </div>
-
-    <!-- Removed High Risk and Trend sections as per user request -->
-
-</div>
-</div>
-
-<!-- Tab Content: Prediction -->
-<div id="prediction" class="tab-pane">
-    <div class="filters-section">
-        <div class="filter-group">
-            <label><i class="fas fa-clock"></i> Target Year</label>
-            <select id="predYear" class="filter-select">
-                <option value="2082">2082</option>
-                <option value="2083">2083</option>
-                <option value="2084">2084</option>
-                <option value="2085">2085</option>
-                <option value="2086">2086</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <label><i class="fas fa-map-marker-alt"></i> Province</label>
-            <select id="predProvince" class="filter-select">
-                <option value="">Select Province</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <label><i class="fas fa-building"></i> District</label>
-            <select id="predDistrict" class="filter-select">
-                <option value="">Select District</option>
-            </select>
-        </div>
-        <div class="filter-actions">
-            <button id="predBtn"
-                style="padding:0.6rem 1.5rem; background:var(--primary-color); color:white; border:none; border-radius:0.375rem; cursor:pointer; font-weight:600;">Predict
-                Crime Trends</button>
-            <button onclick="resetPredFilters()"
-                style="padding:0.6rem 1.5rem; background:white; color:var(--text-secondary); border:1px solid var(--border-color); border-radius:0.375rem; cursor:pointer; font-weight:600;">Reset</button>
-        </div>
-    </div>
-
-    <div id="predictionResults" style="display:none; animation: fadeIn 0.5s;">
-        <!-- Safety Status Card -->
-        <div style="background: white; border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 2rem; border-left: 6px solid #e2e8f0;"
-            id="safetyCard">
-            <h2 style="margin:0; font-size:1.5rem;">Predicted Status: <span id="predSafetyStatus">Stable</span>
-            </h2>
-            <p style="margin:0.5rem 0 0; color:#64748b;">
-                Forecast for <span id="predTargetYearLabel">...</span> shows approx. <strong
-                    id="predTotalCount">...</strong> cases.
-            </p>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
-
-            <!-- Chart Section -->
-            <div class="chart-card">
-                <div class="chart-header">Projected Crime Distribution</div>
-                <canvas id="predictionChart"></canvas>
-            </div>
-
-            <!-- Rising Crimes List -->
-            <div class="stat-card" style="height: auto;">
-                <h3 class="stat-title" style="color:var(--danger-color);"><i class="fas fa-chart-line"></i>
-                    Rising Crimes Alert!</h3>
-                <p style="font-size:0.9rem; color:#64748b; margin-bottom:1rem;">These crimes are
-                    trending upwards based on historical patterns:</p>
-                <div id="risingCrimesList" style="display: flex; flex-direction: column; gap: 0.5rem;">
-                    <!-- Populated by JS -->
+                <div class="form-group">
+                    <label>Description of Incident</label>
+                    <textarea name="description" class="form-control" rows="4" required
+                        placeholder="Describe what happened..."></textarea>
                 </div>
-            </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1rem;">
+                    <button type="button" id="emergencyAlertBtn" onclick="handleEmergencyAlert()"
+                        style="background:#ef4444; color:white; border:none; padding:0.75rem 1.5rem; border-radius:0.375rem; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:0.5rem;">
+                        <i class="fas fa-exclamation-triangle"></i> Emergency Alert
+                    </button>
+                    <button type="submit" class="btn-primary" style="margin:0;">Submit Complaint</button>
+                </div>
+            </form>
         </div>
     </div>
-</div>
 
-</div> <!-- End Main Container -->
-
-<script src="{{ url_for('static', filename='js/app.js') }}?v={{ range(1, 10000) | random }}"></script>
 </body>
 
 </html>
