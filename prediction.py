@@ -22,7 +22,7 @@ def train_and_predict(target_year, province=None, district=None):
             query += " AND TRIM(province) = ? COLLATE NOCASE"
             params.append(province.strip())
         if district:
-            # Use LIKE to match "Kathmandu" against "Kathmandu Metropolitan", etc.
+       
             query += " AND district LIKE ? COLLATE NOCASE"
             params.append(f"{district.strip()}%")
             
@@ -31,23 +31,17 @@ def train_and_predict(target_year, province=None, district=None):
         if df.empty:
             return {"error": "No data found for the selected location"}
 
-        # Convert year to integer (handle potential string formatting)
-        # Assuming year is like '2078/079' or '2078', we need a consistent integer representation.
-        # Let's check the data format. Based on previous context, it might be strings.
-        # For simple regression, we can use the first 4 digits if it's a fiscal year string.
-        
-        # Helper to parse year
         def parse_year(y):
             s = str(y).strip()
             if '/' in s:
-                return int(s.split('/')[0]) # Take start of fiscal year
+                return int(s.split('/')[0]) 
             try:
                 return int(s)
             except:
                 return 0
 
         df['year_int'] = df['year'].apply(parse_year)
-        df = df[df['year_int'] > 0] # Filter invalid years
+        df = df[df['year_int'] > 0] 
         
         target_year_int = int(target_year)
         
@@ -58,34 +52,32 @@ def train_and_predict(target_year, province=None, district=None):
             sub_df = df[df['crime_type'] == c_type].groupby('year_int')['total_cases'].sum().reset_index()
             
             if len(sub_df) < 2:
-                # Not enough points for regression, use last known value or 0
+                
                 predicted_val = sub_df['total_cases'].iloc[-1] if not sub_df.empty else 0
                 trend = 0
             else:
                 X = sub_df[['year_int']]
                 y = sub_df['total_cases']
                 
-                # Weighted Linear Regression (Give more weight to recent years)
-                # Weights: 1.0 for oldest, increasing by 0.2 per year
+                
                 sample_weights = np.linspace(1, 2, len(sub_df))
                 
                 model = LinearRegression()
                 model.fit(X, y, sample_weight=sample_weights)
                 
-                # Predict
+                
                 raw_prediction = model.predict([[target_year_int]])[0]
                 
-                # Amplify Trend for Future Years (User requested "more changes")
-                # If projecting far out, add a small compound factor based on slope
+        
                 years_ahead = target_year_int - sub_df['year_int'].max()
                 if years_ahead > 0:
                     slope = model.coef_[0]
-                    # Add 10% acceleration to the slope per year ahead to differentiate years more
+                
                     raw_prediction += (slope * 0.1 * years_ahead)
 
                 predicted_val = max(0, raw_prediction)
                 
-                # Calculate trend (slope)
+        
                 trend = model.coef_[0]
             
             results.append({
@@ -94,16 +86,15 @@ def train_and_predict(target_year, province=None, district=None):
                 'trend': trend
             })
             
-        # Analysis
+        
         results.sort(key=lambda x: x['predicted_cases'], reverse=True)
         total_predicted = sum(r['predicted_cases'] for r in results)
         
-        # Filter rising crimes with a significant trend
-        # Threshold: Trend must be > 0.5 cases per year to be considered "Highlighted"
+    
         rising_crimes = [r for r in results if r['trend'] > 0.5]
-        rising_crimes.sort(key=lambda x: x['trend'], reverse=True) # Sort by steepest increase
+        rising_crimes.sort(key=lambda x: x['trend'], reverse=True) 
         
-        # Determine Safety Level based on comparison with the LAST KNOWN YEAR
+    
         last_year = df['year_int'].max()
         last_year_total = df[df['year_int'] == last_year]['total_cases'].sum()
         
@@ -122,38 +113,32 @@ def train_and_predict(target_year, province=None, district=None):
         elif total_predicted < last_year_total * 0.98:
             safety_status = "Improving (Declining Trend)"
             
-        # Fallback: If High Risk but no rising crimes shown (due to low volume), force show the top increasing one
         if safety_status == "High Risk (Rising)" and not rising_crimes:
             any_rising = [r for r in results if r['trend'] > 0]
             if any_rising:
                 any_rising.sort(key=lambda x: x['trend'], reverse=True)
                 rising_crimes = [any_rising[0]]
 
-        # --- Synthetic Alerts (Requested by User) ---
         if district:
             d_norm = district.strip().lower()
-            
-            # 1. Theft / Major Urban Poverty Areas
+
             THEFT_DISTRICTS = [
                 'kathmandu', 'lalitpur', 'bhaktapur', 'kaski', 'morang', 'sunsari', 
                 'parsa', 'rupandehi', 'chitwan', 'banke', 'dhanusha'
             ]
-            # Check for partial match (e.g. "kathmandu" matches "kathmandu metropolitan")
+
             if any(t in d_norm for t in THEFT_DISTRICTS):
                 rising_crimes.append({
                     'crime_type': 'Theft (High Risk Area)', 
-                    'predicted_cases': 150, # Dummy high val
+                    'predicted_cases': 150, 
                     'trend': 15.0 
                 })
 
-            # 2. Drug Abuse (Refined Logic)
-            # A. Key Border Transit Points (High Trafficking Risk)
             BORDER_HUBS = [
                 'jhapa', 'morang', 'parsa', 'rupandehi', 'banke', 'kailali', 'kanchanpur'
             ]
+
             
-            # B. High Illiteracy / Low HDI Districts (Vulnerable Populations)
-            # Focused on Prov 2 (Madhesh) and Karnali/Sudurpaschim remote areas
             VULNERABLE_DISTRICTS = [
                 'rautahat', 'mahottari', 'sarlahi', 'dhanusha', 'bara', 'siraha', 'saptari', # Madhesh
                 'humla', 'bajura', 'kalikot', 'mugu', 'dolpa', 'achham', 'bajhang' # Remote Hills
@@ -175,14 +160,14 @@ def train_and_predict(target_year, province=None, district=None):
                     'trend': 8.5
                 })
             
-            # Re-sort to show most critical top
+          
             rising_crimes.sort(key=lambda x: x['trend'], reverse=True)
             
         return {
             'target_year': target_year,
             'total_predicted_cases': round(total_predicted),
             'safety_status': safety_status,
-            'rising_crimes': rising_crimes[:5], # Top 5 rising
+            'rising_crimes': rising_crimes[:5], 
             'detailed_predictions': results
         }
         

@@ -3,6 +3,7 @@ import sqlite3
 import pandas as pd
 import os
 from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key_for_demo' # Change in production
@@ -51,9 +52,20 @@ def init_tables():
             message TEXT NOT NULL,
             status TEXT DEFAULT 'Pending',
             accepted_by TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            sender_name TEXT
         )
     ''')
+    
+    # Fixed Admin User
+    admin = conn.execute('SELECT * FROM users WHERE role = ?', ('admin',)).fetchone()
+    if not admin:
+        hashed_pw = generate_password_hash('admin123')
+        conn.execute('''
+            INSERT INTO users (full_name, username, password_hash, role)
+            VALUES (?, ?, ?, ?)
+        ''', ('System Administrator', 'admin', hashed_pw, 'admin'))
+        
     conn.commit()
     conn.close()
 
@@ -100,6 +112,9 @@ def register():
         username = request.form.get('username')
         password = request.form.get('password')
         role = request.form.get('role')
+
+        if role == 'admin':
+            return render_template('register.html', error="Admin registration is not allowed.")
         
         # Police specific fields
         police_station = request.form.get('police_station')
@@ -169,7 +184,6 @@ def my_complaints():
         conn.close()
         
         
-        # Python-side filtering with Fuzzy Matching
         import difflib
         
         matches = []
@@ -365,16 +379,16 @@ def submit_fir():
 def get_dashboard_stats():
     conn = get_db_connection()
     try:
-        # Total cases
+        
         total_cases = conn.execute('SELECT SUM(total_cases) FROM main_crime').fetchone()[0] or 0
         
-        # Total Opened/Closed (Police)
+        
         police_stats = conn.execute('SELECT SUM(opened_cases), SUM(closed_cases) FROM police_performance').fetchone()
         opened = police_stats[0] or 0
         closed = police_stats[1] or 0
         clearance_rate = (closed / opened * 100) if opened > 0 else 0
         
-        # Top Crime Type
+        
         top_crime = conn.execute('SELECT crime_type, SUM(total_cases) as total FROM main_crime GROUP BY crime_type ORDER BY total DESC LIMIT 1').fetchone()
         top_crime_type = top_crime['crime_type'] if top_crime else "N/A"
         
@@ -422,13 +436,6 @@ def get_main_crime_data():
 @app.route('/api/crime/detailed')
 def get_detailed_demographics():
     conn = get_db_connection()
-    # Return all for client-side filtering or implement filtering here
-    # For now returning all rows limited or specific stats?
-    # Requirement: Victim gender distribution, education, etc.
-    # It's better to return the full dataset for this sheet if it's small (35 rows?)
-    # Wait, check row count for demographics. Inspect showed ~35 rows?
-    # If 35 rows, returning all is fine.
-    
     rows = conn.execute('SELECT * FROM victim_demographics').fetchall()
     conn.close()
     return jsonify([dict(row) for row in rows])
@@ -608,33 +615,194 @@ def get_stations():
     query = "SELECT station_name, phone FROM police_stations WHERE district LIKE ? COLLATE NOCASE"
     rows = conn.execute(query, (f"{district}%",)).fetchall()
     conn.close()
+    return jsonify([{'name': row['station_name'], 'phone': row['phone']} for row in rows])
     
-    return jsonify([{'name': r[0], 'phone': r[1]} for r in rows])
+# --- Admin Routes ---
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'role' not in session or session['role'] != 'admin':
+            return jsonify({'error': 'Unauthorized'}), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/api/admin/stats')
+@admin_required
+def admin_stats():
+    conn = get_db_connection()
+    user_counts = conn.execute('SELECT role, count(*) as count FROM users GROUP BY role').fetchall()
+    total_firs = conn.execute('SELECT count(*) FROM firs').fetchone()[0]
+    total_crime = conn.execute('SELECT count(*) FROM main_crime').fetchone()[0]
+    conn.close()
+    
+    stats = {
+        'user_stats': [dict(row) for row in user_counts],
+        'total_firs': total_firs,
+        'total_crime_records': total_crime
+    }
+    return jsonify(stats)
+
+@app.route('/api/admin/users', methods=['GET'])
+@admin_required
+def admin_list_users():
+    conn = get_db_connection()
+    users = conn.execute('SELECT id, full_name, username, role, police_station, district, created_at FROM users').fetchall()
+    conn.close()
+    return jsonify([dict(row) for row in users])
+
+@app.route('/api/admin/users/<int:user_id>', methods=['PUT', 'DELETE'])
+@admin_required
+def admin_manage_user(user_id):
+    conn = get_db_connection()
+    if request.method == 'DELETE':
+        conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+    
+    data = request.get_json()
+    full_name = data.get('full_name')
+    username = data.get('username')
+    role = data.get('role')
+    police_station = data.get('police_station')
+    district = data.get('district')
+    new_password = data.get('password')
+
+    if not full_name or not username or not role:
+        return jsonify({'error': 'Required fields missing'}), 400
+
+    try:
+        if new_password:
+            hashed_pw = generate_password_hash(new_password)
+            conn.execute('''
+                UPDATE users SET full_name = ?, username = ?, role = ?, police_station = ?, district = ?, password_hash = ?
+                WHERE id = ?
+            ''', (full_name, username, role, police_station, district, hashed_pw, user_id))
+        else:
+            conn.execute('''
+                UPDATE users SET full_name = ?, username = ?, role = ?, police_station = ?, district = ?
+                WHERE id = ?
+            ''', (full_name, username, role, police_station, district, user_id))
+        
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+    except sqlite3.IntegrityError:
+        return jsonify({'error': 'Username already exists'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/firs', methods=['GET'])
+@admin_required
+def admin_list_firs():
+    conn = get_db_connection()
+    firs = conn.execute('SELECT * FROM firs ORDER BY created_at DESC').fetchall()
+    conn.close()
+    return jsonify([dict(row) for row in firs])
+
+@app.route('/api/admin/firs/<int:fir_id>', methods=['PUT', 'DELETE'])
+@admin_required
+def admin_manage_fir(fir_id):
+    conn = get_db_connection()
+    if request.method == 'DELETE':
+        conn.execute('DELETE FROM firs WHERE id = ?', (fir_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+    
+    data = request.get_json()
+    conn.execute('''
+        UPDATE firs SET full_name = ?, province = ?, district = ?, police_station = ?, 
+        crime_type = ?, description = ?, status = ?
+        WHERE id = ?
+    ''', (data.get('full_name'), data.get('province'), data.get('district'), 
+          data.get('police_station'), data.get('crime_type'), data.get('description'), 
+          data.get('status'), fir_id))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success'})
+
+@app.route('/api/admin/crime', methods=['GET', 'POST'])
+@admin_required
+def admin_manage_crime_base():
+    conn = get_db_connection()
+    if request.method == 'GET':
+        year = request.args.get('year')
+        if year:
+            rows = conn.execute('SELECT * FROM main_crime WHERE year = ? ORDER BY district ASC', (year,)).fetchall()
+        else:
+            rows = conn.execute('SELECT * FROM main_crime ORDER BY year DESC, district ASC LIMIT 1000').fetchall()
+        conn.close()
+        return jsonify([dict(row) for row in rows])
+    
+    data = request.get_json()
+    conn.execute('''
+        INSERT INTO main_crime (year, province, district, crime_type, total_cases)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (data.get('year'), data.get('province'), data.get('district'), 
+          data.get('crime_type'), data.get('total_cases')))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success'})
+
+@app.route('/api/admin/crime/<int:crime_id>', methods=['PUT', 'DELETE'])
+@admin_required
+def admin_manage_crime_item(crime_id):
+    conn = get_db_connection()
+    if request.method == 'DELETE':
+        conn.execute('DELETE FROM main_crime WHERE id = ?', (crime_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+    
+    data = request.get_json()
+    conn.execute('''
+        UPDATE main_crime SET year = ?, province = ?, district = ?, crime_type = ?, total_cases = ?
+        WHERE id = ?
+    ''', (data.get('year'), data.get('province'), data.get('district'), 
+          data.get('crime_type'), data.get('total_cases'), crime_id))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success'})
+
+@app.route('/api/admin/stations', methods=['GET', 'POST'])
+@admin_required
+def admin_manage_stations_base():
+    conn = get_db_connection()
+    if request.method == 'GET':
+        rows = conn.execute('SELECT * FROM police_stations ORDER BY district ASC, station_name ASC').fetchall()
+        conn.close()
+        return jsonify([dict(row) for row in rows])
+    
+    data = request.get_json()
+    conn.execute('''
+        INSERT INTO police_stations (district, station_name, phone)
+        VALUES (?, ?, ?)
+    ''', (data.get('district'), data.get('station_name'), data.get('phone')))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success'})
+
+@app.route('/api/admin/stations/<int:station_id>', methods=['PUT', 'DELETE'])
+@admin_required
+def admin_manage_station_item(station_id):
+    conn = get_db_connection()
+    if request.method == 'DELETE':
+        conn.execute('DELETE FROM police_stations WHERE id = ?', (station_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+    
+    data = request.get_json()
+    conn.execute('''
+        UPDATE police_stations SET district = ?, station_name = ?, phone = ?
+        WHERE id = ?
+    ''', (data.get('district'), data.get('station_name'), data.get('phone'), station_id))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success'})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
 
-@app.route('/api/update_status', methods=['POST'])
-def update_status():
-    if 'user_id' not in session or session.get('role') != 'police':
-        return jsonify({'error': 'Unauthorized'}), 403
-        
-    data = request.get_json()
-    fir_id = data.get('id')
-    new_status = data.get('status')
-    
-    if not fir_id or not new_status:
-        return jsonify({'error': 'Missing data'}), 400
-        
-    # Verify this FIR belongs to the logged-in police station (security check)
-    # Ideally checking against DB, but for now trusting ID + Session Context logic
-    
-    conn = get_db_connection()
-    try:
-        conn.execute("UPDATE firs SET status = ? WHERE id = ?", (new_status, fir_id))
-        conn.commit()
-        return jsonify({'status': 'success'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        conn.close()
+

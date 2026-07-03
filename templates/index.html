@@ -24,19 +24,25 @@
     <!-- Top Navbar -->
     <nav class="navbar">
         <div class="brand">
-            <i class="fas fa-chart-line"></i> Nepal GBV Analytics
+            <i class="fas fa-chart-line"></i> Crime Nepal
         </div>
         <div class="nav-menu">
+            {% if user and user.role != 'admin' %}
             <button class="nav-item active" onclick="switchTab('home')">Home</button>
             <button class="nav-item" onclick="switchTab('prediction')">Prediction</button>
+            {% endif %}
 
-            {% if user and user.role != 'police' %}
+            {% if user and user.role != 'police' and user.role != 'admin' %}
             <button class="nav-item" onclick="switchTab('alert')">Alert</button>
             {% endif %}
 
             {% if user and user.role == 'police' %}
             <button class="nav-item" onclick="switchTab('notifications')">Notifications</button>
             <button class="nav-item" onclick="switchTab('complaints')">Complaints</button>
+            {% endif %}
+
+            {% if user and user.role == 'admin' %}
+            <button class="nav-item active" onclick="switchTab('admin')">Admin</button>
             {% endif %}
 
             {% if user %}
@@ -60,7 +66,8 @@
     <div class="main-container">
 
         <!-- HOME TAB WRAPPER -->
-        <div id="home" style="display: block;">
+        <div id="home" class="tab-pane {% if user and user.role != 'admin' %}active{% endif %}"
+            style="display: {% if user and user.role == 'admin' %}none{% else %}block{% endif %};">
             <!-- Filters Area -->
             <!-- Dashboard Category Tabs (Sub-nav for Home) -->
             <div class="nav-tabs">
@@ -518,6 +525,116 @@
         </div>
     </div>
 
+    <!-- Tab Content: Admin (Admin Only) -->
+    <div id="admin" class="tab-pane {% if user and user.role == 'admin' %}active{% endif %}"
+        style="display: {% if user and user.role == 'admin' %}block{% else %}none{% endif %};">
+        <div class="stats-grid" id="adminStatsGrid">
+            <!-- Populated by JS -->
+        </div>
+
+        <div class="nav-tabs" style="margin-top: 2rem;">
+            <div class="nav-tab active" data-admin-tab="users-mgmt">Users</div>
+            <div class="nav-tab" data-admin-tab="firs-mgmt">FIRs</div>
+            <div class="nav-tab" data-admin-tab="crime-mgmt">Crime Records</div>
+            <div class="nav-tab" data-admin-tab="stations-mgmt">Police Stations</div>
+        </div>
+
+        <!-- Users Management -->
+        <div id="users-mgmt" class="admin-sub-pane active">
+            <div class="stat-card full-width" style="height: auto;">
+                <div class="stat-title">User Management</div>
+                <div style="overflow-x: auto; margin-top: 1rem;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f8fafc; text-align: left;">
+                                <th style="padding: 0.75rem;">Full Name</th>
+                                <th style="padding: 0.75rem;">Username</th>
+                                <th style="padding: 0.75rem;">Role</th>
+                                <th style="padding: 0.75rem;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminUsersBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- FIRs Management -->
+        <div id="firs-mgmt" class="admin-sub-pane" style="display: none;">
+            <div class="stat-card full-width" style="height: auto;">
+                <div class="stat-title">FIR Management</div>
+                <div style="overflow-x: auto; margin-top: 1rem;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f8fafc; text-align: left;">
+                                <th style="padding: 0.75rem;">Full Name</th>
+                                <th style="padding: 0.75rem;">Crime Type</th>
+                                <th style="padding: 0.75rem;">Status</th>
+                                <th style="padding: 0.75rem;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminFirsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Crime Management -->
+        <div id="crime-mgmt" class="admin-sub-pane" style="display: none;">
+            <div class="stat-card full-width" style="height: auto;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div class="stat-title">Crime Data Management</div>
+                        <select id="adminCrimeYearFilter" class="filter-select"
+                            style="padding: 0.4rem; min-width: 120px;">
+                            <option value="">All Years</option>
+                        </select>
+                    </div>
+                    <button onclick="openAddCrimeModal()" class="btn-primary"
+                        style="width: auto; margin: 0; padding: 0.5rem 1rem;">Add Record</button>
+                </div>
+                <div style="overflow-x: auto; margin-top: 1rem;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f8fafc; text-align: left;">
+                                <th style="padding: 0.75rem;">Year</th>
+                                <th style="padding: 0.75rem;">District</th>
+                                <th style="padding: 0.75rem;">Crime Type</th>
+                                <th style="padding: 0.75rem;">Total Cases</th>
+                                <th style="padding: 0.75rem;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminCrimeBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Police Stations Management -->
+        <div id="stations-mgmt" class="admin-sub-pane" style="display: none;">
+            <div class="stat-card full-width" style="height: auto;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div class="stat-title">Police Station Management</div>
+                    <button onclick="openAddStationModal()" class="btn-primary"
+                        style="width: auto; margin: 0; padding: 0.5rem 1rem;">Add Station</button>
+                </div>
+                <div style="overflow-x: auto; margin-top: 1rem;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f8fafc; text-align: left;">
+                                <th style="padding: 0.75rem;">District</th>
+                                <th style="padding: 0.75rem;">Station Name</th>
+                                <th style="padding: 0.75rem;">Phone</th>
+                                <th style="padding: 0.75rem;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminStationsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- End Prediction Tab Wrapper -->
 
     </div> <!-- End Main Container -->
@@ -597,6 +714,108 @@
                     </button>
                     <button type="submit" class="btn-primary" style="margin:0;">Submit Complaint</button>
                 </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Admin Edit User Modal -->
+    <div id="adminUserModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit User</h2>
+                <button class="close-modal" onclick="closeAdminModals()">&times;</button>
+            </div>
+            <form id="adminUserForm">
+                <input type="hidden" name="user_id">
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" name="full_name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" name="username" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>New Password (Leave blank to keep current)</label>
+                    <input type="password" name="password" class="form-control" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label>Role</label>
+                    <select name="role" class="form-control">
+                        <option value="user">User</option>
+                        <option value="police">Police</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>District</label>
+                    <input type="text" name="district" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Police Station</label>
+                    <input type="text" name="police_station" class="form-control">
+                </div>
+                <button type="submit" class="btn-primary">Save Changes</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Admin Crime Modal -->
+    <div id="adminCrimeModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="adminCrimeModalTitle">Add/Edit Crime Record</h2>
+                <button class="close-modal" onclick="closeAdminModals()">&times;</button>
+            </div>
+            <form id="adminCrimeForm">
+                <input type="hidden" name="crime_id">
+                <div class="form-group">
+                    <label>Year</label>
+                    <input type="text" name="year" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Province</label>
+                    <input type="text" name="province" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>District</label>
+                    <input type="text" name="district" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Crime Type</label>
+                    <input type="text" name="crime_type" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Total Cases</label>
+                    <input type="number" name="total_cases" class="form-control" required>
+                </div>
+                <button type="submit" class="btn-primary">Save Record</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Admin Station Modal -->
+    <div id="adminStationModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="adminStationModalTitle">Add/Edit Police Station</h2>
+                <button class="close-modal" onclick="closeAdminModals()">&times;</button>
+            </div>
+            <form id="adminStationForm">
+                <input type="hidden" name="station_id">
+                <div class="form-group">
+                    <label>District</label>
+                    <input type="text" name="district" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Station Name</label>
+                    <input type="text" name="station_name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Phone Number</label>
+                    <input type="text" name="phone" class="form-control" required>
+                </div>
+                <button type="submit" class="btn-primary">Save Station</button>
             </form>
         </div>
     </div>

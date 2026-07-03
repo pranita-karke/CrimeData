@@ -1,0 +1,103 @@
+
+--- Table: main_crime ---
+  id: INTEGER
+  year: TEXT
+  province: TEXT
+  district: TEXT
+  crime_type: TEXT
+  total_cases: INTEGER
+
+--- Table: victim_demographics ---
+  id: INTEGER
+  Year: TEXT
+  Province: TEXT
+  Crime_Type: TEXT
+  Total_Cases: INTEGER
+  Victim_Female: INTEGER
+  Victim_Male: INTEGER
+  Victim_Unknown: INTEGER
+  Offender_Male: INTEGER
+  Offender_Female: INTEGER
+  Offender_Unknown: INTEGER
+  Victim_Age_Group_lte_10: INTEGER
+  Victim_Age_Group_11_14: INTEGER
+  Victim_Age_Group_15_16: INTEGER
+  Victim_Age_Group_17_18: INTEGER
+  Victim_Age_Group_19_25: INTEGER
+  Victim_Age_Group_26_35: INTEGER
+  Victim_Age_Group_36_45: INTEGER
+  Victim_Age_Group_46_59: INTEGER
+  Victim_Age_Group_60_plus: INTEGER
+  Offender_Age_Group_lte_10: INTEGER
+  Offender_Age_Group_11_14: INTEGER
+  Offender_Age_Group_15_16: INTEGER
+  Offender_Age_Group_17_18: INTEGER
+  Offender_Age_Group_19_25: INTEGER
+  Offender_Age_Group_26_35: INTEGER
+  Offender_Age_Group_36_45: INTEGER
+  Offender_Age_Group_46_59: INTEGER
+  Offender_Age_Group_60_plus: INTEGER
+  Victim_Edu_Illiterate: INTEGER
+  Victim_Edu_Literate: INTEGER
+  Victim_Edu_SchoolLevel: INTEGER
+  Victim_Edu_Plus2: INTEGER
+  Victim_Edu_BachelorPlus: INTEGER
+  Offender_Edu_Illiterate: INTEGER
+  Offender_Edu_Literate: INTEGER
+  Offender_Edu_SchoolLevel: INTEGER
+  Offender_Edu_Plus2: INTEGER
+  Offender_Edu_BachelorPlus: INTEGER
+  Known_Offender_Percent: INTEGER
+  Relationship_Family: INTEGER
+  Relationship_Relative: INTEGER
+  Relationship_Neighbor: INTEGER
+  Relationship_Teacher: INTEGER
+  Relationship_Acquaintance: INTEGER
+  Relationship_Stranger: INTEGER
+  Relationship_Unknown: INTEGER
+
+--- Table: police_performance ---
+  id: INTEGER
+  Year: TEXT
+  Region: TEXT
+  Total_Cases: INTEGER
+  Closed_Cases: INTEGER
+  Opened_Cases: INTEGER
+
+--- Table: police_stations ---
+  id: INTEGER
+  district: TEXT
+  station_name: TEXT
+  phone: TEXT
+
+--- Table: firs ---
+  id: INTEGER
+  full_name: TEXT
+  province: TEXT
+  district: TEXT
+  police_station: TEXT
+  contact_info: TEXT
+  crime_type: TEXT
+  description: TEXT
+  status: TEXT
+  created_at: TIMESTAMP
+  nepali_date: TEXT
+
+--- Table: users ---
+  id: INTEGER
+  full_name: TEXT
+  username: TEXT
+  password_hash: TEXT
+  role: TEXT
+  police_station: TEXT
+  district: TEXT
+  created_at: TIMESTAMP
+
+--- Table: alerts ---
+  id: INTEGER
+  district: TEXT
+  message: TEXT
+  status: TEXT
+  accepted_by: TEXT
+  created_at: TIMESTAMP
+  sender_name: TEXT
